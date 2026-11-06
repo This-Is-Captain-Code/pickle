@@ -8,7 +8,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 | 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
 | 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 Rebuilt 17:50 on branch `gopika/compute-testnet` (worktree `../pickle-compute`): **text = testnet direct SDK, vision = mainnet Router**, swappable via `ZEROG_COMPUTE_MODE`. `smoke:compute-down` ✅ PASS, 5 outage modes across both backends. `smoke:compute` text is **waiting for ≥ 3.5 testnet 0G at COMPUTE_WALLET** (asked 0G mentors); vision is waiting for Router credits (`402 pay_no_balance`, and `0gm-1.0-35b-a3b` provider 502 at 16:47, x-request-id `ac87632ee2e3dd78`) | started 16:29 |
 | 4 | 0G Storage: `smoke:storage` | ✅ PASS 2026-11-06 17:26 IST (first attempt) | see Pickle session below |
-| 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ SKIPPED — no World IdP client in `agents/.env` | — |
+| 5 | World ID 4.0 + IDKit: `smoke:world` (success, tampered, duplicate, cancelled) | ✅ PASS 2026-11-06 20:32 IST. App `app_8db3…c431`, RP `rp_23ff310ecada5143`, one action per bounty; details in world-debrief.md | 1 h 41 min (18:45 → 20:26 first success) |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
 | 7 | `smoke:all`, update STATUS | ✅ 2026-11-06 17:35 IST: 7 PASS · 1 FAIL (compute, 402) · 2 SKIPPED | — |
 

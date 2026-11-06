@@ -208,7 +208,38 @@ const dlErr = await indexer.download(rootHash, outPath, true); // true = verify 
 - `download()` uses `fs.appendFileSync`, so delete `outPath` first or it will append.
 - The `rootHash`/`txHash` fields on `tx` are shown for `ZgFile` uploads. For `MemData` they're assumed by analogy and will be confirmed in smoke:storage.
 
-## 4. World ID Agent Pass (= World IdP, OIDC)
+## 4b. World ID 4.0 + IDKit — **what we use** (decision 2026-11-06 18:45; supersedes §4)
+
+Fetched 2026-11-06. Sources:
+- docs.world.org/world-id/idkit/{integrate, signatures, javascript, credentials, error-codes, session-proofs}
+- docs.world.org/world-id/{concepts, SKILL, 4-0-migration}
+- docs.world.org/api-reference/developer-portal/verify
+- docs.world.org/model-context-protocol/developer-portal
+- npm registry
+
+| Fact | Value | Source |
+|---|---|---|
+| Packages | `@worldcoin/idkit-core` **4.6.0** (headless; Node 18+ and browser); `/signing` subpath → `signRequest`; `/hashing` → `hashSignal`. Pulls `@worldcoin/idkit-server` 1.2.0. "Use the latest 4.x"; do not use ^2/^3 | integrate, SKILL, npm |
+| RP signature | `signRequest({signingKeyHex, action, ttl?})` → `{sig, nonce, createdAt, expiresAt}`. secp256k1, EIP-191, keccak; default TTL 300 s. The key is 32-byte hex and **server only** | signatures, javascript |
+| rp_context | `{rp_id, nonce, created_at, expires_at, signature}` | integrate |
+| Request | `IDKit.request({app_id, action, rp_context, allow_legacy_proofs:false, environment}).preset(proofOfHuman({signal}))` → `connectorURI` (the QR), `pollUntilCompletion({pollInterval, timeout})` (defaults 1 s / 15 min, never throws) | javascript, typings |
+| Result (v4) | `{protocol_version:"4.0", nonce, action, environment, responses:[{identifier, issuer_schema_id, signal_hash, nullifier, expires_at_min, proof[5]}]}` | integrate |
+| Verify | `POST https://developer.world.org/api/v4/verify/{rp_id}`, no auth, body = result as-is (+environment). Success `{success:true, action, nullifier, environment, results[]}`. Error `{success:false, code, detail, results?}` | verify, integrate |
+| Nullifier | one per (user, app, action), independent of the signal. 0x-hex 256-bit; store as an integer; **the RP must reject reuse** | concepts, integrate |
+| Actions | "uniqueness proofs are one-time per action… use separate actions" → **one action per bounty**. Create with portal MCP `create_world_id_action {app_id, action, description, environment}` at `https://developer.world.org/api/mcp` with a team `api_…` key. No REST endpoint or dashboard path documented | SKILL, MCP docs |
+| Environments | the real World App signs **production** proofs only; staging = simulator | SKILL |
+| Portal setup | `create_app` → `configure_world_id` (managed RP, on-chain registration; signing key returned **once**). `get_app_config` → `rp_registration[].signer_address` / `actions_v4`. `get_world_id_registration_status` syncs the status. `rotate_world_id_signing_key` | MCP tools/list |
+
+**Observed live (2026-11-06):**
+- **v4 verify accepted a second proof** for the same action and nullifier; no `nullifier_replayed` came back. Uniqueness is enforced on-chain (`PickleEscrow.hasClaimed`).
+- A junk or tampered proof gives HTTP 400 `all_verifications_failed`, with per-result code `verification_failed`. That code is not in the OpenAPI.
+- A wrong RP key gives IDKit completion error `invalid_rp_signature`, but only after the scan.
+- Portal `status` can show `pending` while `/api/v4/rp-status/{rp_id}` already says `registered`; `get_world_id_registration_status` syncs it.
+- An unacted QR ends in `timeout` after the request TTL.
+
+**Our app:** `app_8db3cb0dbab89d6eca9a308639d9c431`, RP `rp_23ff310ecada5143`, signer `0x10D0f85474265E73dBBd6E5EE8A841CD1CAf7E05`, production.
+
+## 4. World ID Agent Pass (= World IdP, OIDC) — _superseded by §4b, kept for the record_
 
 The term "Agent Pass" doesn't appear in the docs. The product is **World IdP**, an OIDC provider; its docs headline is "Human continuity for apps and agents" (W-DOCS). The relevant agent features are:
 - the **device flow**, "Sign in a headless agent" (W-OIDC);

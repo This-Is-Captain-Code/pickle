@@ -114,7 +114,30 @@ npm run smoke:episode
 - **Cost measured:** ≈0.0012 0G gas + ≈0.0027 0G storage.
 - Local mirror: `agents/logs/episodes/<id>.jsonl`.
 
-## smoke:world — _not built: World IdP client keys missing_
+## smoke:world — World ID 4.0 claim gate (interactive)
+
+```
+npm run smoke:world      # keep World App ready: 3 scans
+```
+
+**Preflight:** checks that the RP is `registered` and that `WORLD_RP_SIGNING_KEY` signs as the portal's `signer_address`. A wrong key fails here in ~2 s, before anything is posted.
+
+Then it posts bounties A and B (0.001 0G each, 120 s claim window). Each bounty gets its own World ID action, created via the portal MCP.
+
+| Step | What you do | Expected |
+|---|---|---|
+| 1 | Scan, **approve** | World v4 verify ✔ → `humanHash = keccak256(nullifier)` → `PickleEscrow.claim` ✔ |
+| 2 | Nothing | A tampered proof element is rejected by World (`all_verifications_failed`); A's proof replayed against B's action is rejected by our precheck |
+| 3 | Scan, **approve again** (same bounty) | Refused: World replay error, or (as observed) World verifies but `hasClaimed` → `HumanAlreadyClaimed`. Nothing sent |
+| 4 | Scan, **decline** (or let it time out) | Verification fails → no claim; B stays Open |
+| cleanup | — | Cancels B, waits out A's window, then AGENT_2 expires A; escrow goes back to robot G1 |
+
+- **The QR** prints in the terminal and is served at http://localhost:8799/ (`WORLD_QR_PORT`).
+- **Needs:** `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_RP_SIGNING_KEY`, `WORLD_PORTAL_API_KEY`, `WORLD_ENV=production`, AGENT_G1 and AGENT_2 keys, and robot G1 escrow ≥ 0.002 0G.
+- **Setup a new app:** run `npx tsx agents/scripts/setup-world-app.mts` yourself. It writes the one-time key to `.env`.
+- **Cost measured:** ≈ 0.0015 0G gas (4 txs + cleanup). Payouts are not spent.
+- **Last run:** 2026-11-06 20:32, PASS (7 min 10 s).
+- **`smoke:all`** skips it unless `SMOKE_INTERACTIVE=1`.
 ## smoke:zerobot — _not built_
 
 ## smoke:all
