@@ -5,11 +5,18 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "serve": "tsx --env-file-if-exists=.env src/service.ts",
+    "fake-watcher": "tsx --env-file-if-exists=.env src/fake-watcher.ts"
   },
   "dependencies": {
     "@pickle/shared": "*",
     "@pickle/world": "*",
-    "@pickle/zerog": "*"
+    "@pickle/zerog": "*",
+    "mqtt": "^5.10.4",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13"
   }
 }

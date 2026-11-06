@@ -4,12 +4,11 @@
 // (mock by default, env-switched to live — see providers.ts and .env.example):
 //
 //   stuck robot → 0G decision → episode log → bounty posted → IDKit claim
-//   → fix verified (0G) → Agent Pass approval checkpoint → settle
+//   → fix verified (0G) → Agent Pass approval checkpoint → bounty closed
 //
 // This file is the integration point for everyone: the World/0G dev runs it
-// to exercise live providers; the sim/teleop side will replace the synthetic
-// "stuck" event below with real telemetry from sim/ and the settle stub with
-// the Monad escrow in contracts/.
+// to exercise live providers; the sim/teleop side replaces the synthetic
+// "stuck" event with real telemetry. (No on-chain settlement in scope.)
 
 import { ZeroGUnreachable, type Bounty, type Decision } from '@pickle/shared';
 import { buildProviders } from './providers.js';
@@ -62,12 +61,12 @@ async function main() {
     robotId: 'g1-sim-01',
     title: 'Clear my wheel',
     reason: situation.detail,
-    payoutWei: (5n * 10n ** 17n).toString(), // 0.5 MON
+    payoutWei: '0', // settlement out of scope
     state: 'open',
     createdAt: Date.now(),
     expiresAt: Date.now() + 10 * 60_000,
   };
-  log('bounty', `${bounty.id} posted (${bounty.kind}, 0.5 MON) — escrow stub, Monad wiring pending`);
+  log('bounty', `${bounty.id} posted (${bounty.kind})`);
 
   // ── 4. Human claims: IDKit proof-of-human gate ─────────────────────────
   const session = await providers.verifier.createClaimSession(bounty.id);
@@ -102,23 +101,24 @@ async function main() {
     return;
   }
 
-  // ── 6. Agent Pass checkpoint: human approval before payout ─────────────
+  // ── 6. Agent Pass checkpoint: human owner approves the close-out ───────
+  // (The World track's "protected agent action": the agent may not close a
+  // bounty and release the robot back to work without a fresh human approval.)
   const approval = await providers.checkpoint.requestApproval({
-    action: 'settle-bounty',
-    summary: `Pay 0.5 MON to claimant of "${bounty.title}" (${bounty.id})`,
-    amountWei: bounty.payoutWei,
+    action: 'close-bounty',
+    summary: `Confirm completion of "${bounty.title}" (${bounty.id}) and release the robot`,
   });
   log('world', `approval needed — code ${approval.userCode} at ${approval.verificationUri}`);
   const decided = await providers.checkpoint.awaitDecision(approval.approvalId);
   if (decided !== 'approved') {
     bounty.state = 'denied';
-    log('world', `approval ${decided} — payout does NOT occur`);
+    log('world', `approval ${decided} — the protected action does NOT occur`);
     return;
   }
 
-  // ── 7. Settle (stub until contracts/ lands) ────────────────────────────
-  bounty.state = 'paid';
-  log('bounty', `${bounty.id} settled → PAID (escrow stub). Full loop complete. 🥒`);
+  // ── 7. Close out ────────────────────────────────────────────────────────
+  bounty.state = 'verified';
+  log('bounty', `${bounty.id} closed → VERIFIED. Full loop complete. 🥒`);
 }
 
 main().catch((err) => {

@@ -2,7 +2,8 @@
 
 **Pickle is a labor market where robots hire humans.** One pipeline, three
 market modes (physical, teleop, robot→robot), judged across three tracks
-(World ID Agent Pass, Best Use of IDKit, 0G Physical AI) with escrow on Monad.
+(World ID Agent Pass, Best Use of IDKit, 0G Physical AI). Bounties end at
+**verified** — on-chain settlement is out of scope.
 
 ```
              Spectacles (WebXR sender)                      World App
@@ -17,9 +18,7 @@ market modes (physical, teleop, robot→robot), judged across three tracks
                     ▼                           │               │
               agents/ core ────────────────────▶ world/  (IDKit + Agent Pass)
               bounty lifecycle ────────────────▶ zerog/  (Compute decisions +
-                    │                                     Storage episode log)
-                    ▼
-              contracts/ escrow on Monad testnet (post / claim / settle / pay)
+                                                          Storage episode log)
 ```
 
 ## Package map & ownership
@@ -32,7 +31,7 @@ market modes (physical, teleop, robot→robot), judged across three tracks
 | `zerog/` | `DecisionEngine` (0G Compute) + `EpisodeLogger` (0G Storage) | World/0G dev |
 | `sim/` | Node MuJoCo Unitree G1 + browser viewer (ethtokyo port) | lead |
 | `teleop/` | Spectacles WebXR sender + relay + joint-mapping bridge (pinch port) | lead |
-| `contracts/` | Monad escrow (Mumbai port, fresh deploy) | first available |
+| `firmware/` | SenseCAP Watcher: QR bounty poster + VBUS physical proof (Mumbai port) | lead |
 
 ## How parallel work stays unblocked
 
