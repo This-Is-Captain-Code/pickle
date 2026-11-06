@@ -6,6 +6,7 @@ const PANELS = [
   {
     num: '01',
     name: 'PHYSICAL',
+    dir: 'HUMAN → ROBOT',
     accent: 'var(--red)',
     img: '/panels/physical.jpg',
     line: 'A human must be present. The robot buys hands.',
@@ -14,6 +15,7 @@ const PANELS = [
   {
     num: '02',
     name: 'REMOTE',
+    dir: 'HUMAN → ROBOT',
     accent: 'var(--cyan)',
     img: '/panels/remote.jpg',
     line: 'A human pilots it through the gap. The robot buys skill.',
@@ -22,6 +24,7 @@ const PANELS = [
   {
     num: '03',
     name: 'MACHINE',
+    dir: 'ROBOT → ROBOT',
     accent: 'var(--yellow)',
     img: '/panels/machine.jpg',
     line: 'Robots transact directly, peer to peer. No human in the loop.',
@@ -75,12 +78,18 @@ export default function Home() {
             >
               <img src={p.img} alt={`${p.name} intervention`} />
               <div className="label">
-                <div className="flex items-baseline gap-3">
+                <span className="chip self-start" style={{ ['--ca' as string]: p.accent }}>
+                  {p.dir}
+                </span>
+                <div className="flex flex-wrap items-baseline gap-x-3">
                   <span className="font-display text-lg font-bold" style={{ color: p.accent }}>
                     {p.num}
                   </span>
                   <span className="font-display text-3xl font-bold tracking-wide text-[var(--fg)] sm:text-4xl">
                     {p.name}
+                  </span>
+                  <span className="font-display text-xl font-medium tracking-wide text-[var(--fg-dim)] sm:text-2xl">
+                    INTERVENTION
                   </span>
                 </div>
                 <div className="reveal">
