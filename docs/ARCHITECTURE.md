@@ -1,9 +1,11 @@
 # Pickle architecture
 
-**Pickle is a labor market where robots hire humans.** One pipeline, three
-market modes (physical, teleop, robot→robot), judged across three tracks
-(World ID Agent Pass, Best Use of IDKit, 0G Physical AI). Bounties end at
-**verified** — on-chain settlement is out of scope.
+**Pickle is a labor market where robots hire the help they need.** One pipeline,
+three intervention classes — **Physical** (hands, `BountyKind: 'physical'`),
+**Remote** (skill/teleop, `'teleop'`), **Machine** (robot↔robot services,
+`'robot'`) — judged across three tracks (World ID Agent Pass, Best Use of IDKit,
+0G Physical AI). Bounties end at **verified** — on-chain settlement is out of
+scope.
 
 ```
              Spectacles (WebXR sender)                      World App
