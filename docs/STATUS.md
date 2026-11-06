@@ -6,7 +6,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 |---|---|---|---|
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
 | 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
-| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | ⏸ | — |
+| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 `smoke:compute-down` ✅ PASS 16:35. `smoke:compute` code ready, **waiting for `ZEROG_ROUTER_KEY`** (agents/.env still holds the placeholder) | started 16:29 |
 | 4 | 0G Storage: `smoke:storage` | ⏸ | — |
 | 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ | — |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
@@ -46,7 +46,10 @@ Deployer balance after step 2: 0.499257 0G.
 - **D2:** Hardhat 2 + ethers v6, solc 0.8.27, evmVersion cancun.
 - **D3:** Mainnet Router `https://router-api.0g.ai/v1` with model `0gm-1.0-35b-a3b`. Credits come from 0G mentors.
 - **D4:** `vendor/zerobot`, pinned to `c8328ad`, gitignored, with setup commands in a README. WebRTC is timeboxed to 20 min, then fall back to WSL.
-- **Open:** should 0G Storage uploads reuse the deployer wallet? Recommended yes, so only one address needs funding.
+- **Storage wallet:** 0G Storage reuses the deployer wallet (decided 16:29).
+- **smoke:chain** reuses the recorded SmokeStore by default; `--fresh` redeploys.
+- **World:** use **production** `auth.world.org`. The proof source is swappable: production | sandbox | mock. Uniqueness is per bounty: a unique `(iss, sub, bountyId)` record, persisted, with no reset. Details in [world-debrief.md](world-debrief.md).
+- **Compute client:** plain `fetch` against the Router instead of the `openai` SDK. It needs no dependency, gives full control of timeouts and retries, and reads `x_0g_trace` and error codes raw.
 - **World:** the proof source is swappable (`sandbox` | `mock`). Validation always runs on our backend.
 
 ## File plan (for teammate coordination)
@@ -58,6 +61,9 @@ Deployer balance after step 2: 0.499257 0G.
 | `agents/scripts/smoke/*.ts` | New: one per smoke test + `all.ts` |
 | `agents/src/providers.ts` | Small edit: new World/0G config fields and defaults (mainnet router URL, model, proof source). The mock defaults stay unchanged |
 | `agents/src/chain.ts` | New: minimal 0G Chain client |
+| `agents/src/decide.ts` | New: `decideOrSafeStop()` → `OK` or `UNAVAILABLE` + safe-stop |
+| `zerog/src/router.ts` | New: Router HTTP client |
+| `zerog/src/index.ts` | Export the new router helpers |
 | `zerog/src/compute.ts` | Implement `ZeroGDecisionEngine` (router mode) |
 | `zerog/src/storage.ts` | Implement `ZeroGEpisodeLogger` |
 | `zerog/package.json` | Deps |
