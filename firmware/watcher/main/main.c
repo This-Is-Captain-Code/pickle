@@ -99,6 +99,9 @@ void app_main(void) {
 
     monaid_net_cfg_t net = {
         .dev_id = DEV_ID, .wifi_ssid = WIFI_SSID, .wifi_pass = WIFI_PASS,
+#ifdef WIFI_SSID2
+        .wifi_ssid2 = WIFI_SSID2, .wifi_pass2 = WIFI_PASS2,
+#endif
         .broker_uri = BROKER_URI, .mqtt_user = DEV_ID, .mqtt_pass = MQTT_PASS,
         .on_cmd = on_cmd, .on_conn = ui_net,
     };

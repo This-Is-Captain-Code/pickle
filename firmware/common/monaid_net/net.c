@@ -36,14 +36,33 @@ static void mqtt_start_task(void *arg) {
     vTaskDelete(NULL);
 }
 
+static int s_wifi_idx = 0, s_wifi_fails = 0;
+
+static void apply_wifi(int idx) {
+    wifi_config_t wc = { 0 };
+    strlcpy((char *)wc.sta.ssid, idx ? s_cfg.wifi_ssid2 : s_cfg.wifi_ssid, sizeof(wc.sta.ssid));
+    strlcpy((char *)wc.sta.password, idx ? s_cfg.wifi_pass2 : s_cfg.wifi_pass, sizeof(wc.sta.password));
+    wc.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    esp_wifi_set_config(WIFI_IF_STA, &wc);
+    ESP_LOGI(TAG, "wifi target: %s", (char *)wc.sta.ssid);
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGW(TAG, "wifi lost, reconnecting");
+        // After a few straight failures, rotate to the other AP (if configured).
+        if (++s_wifi_fails >= 3 && s_cfg.wifi_ssid2 && s_cfg.wifi_ssid2[0]) {
+            s_wifi_idx ^= 1; s_wifi_fails = 0;
+            ESP_LOGW(TAG, "wifi failing, switching AP");
+            apply_wifi(s_wifi_idx);
+        } else {
+            ESP_LOGW(TAG, "wifi lost, reconnecting");
+        }
         vTaskDelay(pdMS_TO_TICKS(1000));
         esp_wifi_connect();
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        s_wifi_fails = 0;
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "got ip " IPSTR, IP2STR(&e->ip_info.ip));
         if (!s_mqtt_started) {
@@ -97,12 +116,8 @@ esp_err_t monaid_net_start(const monaid_net_cfg_t *cfg) {
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL));
 
-    wifi_config_t wc = { 0 };
-    strlcpy((char *)wc.sta.ssid, cfg->wifi_ssid, sizeof(wc.sta.ssid));
-    strlcpy((char *)wc.sta.password, cfg->wifi_pass, sizeof(wc.sta.password));
-    wc.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));
+    apply_wifi(0);
 
     // MQTT client created up front; started on first GOT_IP.
     esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");

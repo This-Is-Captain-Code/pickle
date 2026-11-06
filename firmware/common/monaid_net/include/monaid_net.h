@@ -15,6 +15,8 @@ typedef struct {
     const char *dev_id;
     const char *wifi_ssid;
     const char *wifi_pass;
+    const char *wifi_ssid2; // optional fallback AP (NULL = none); rotates after repeated failures
+    const char *wifi_pass2;
     const char *broker_uri; // "mqtt://<ip>:1883"
     const char *mqtt_user;
     const char *mqtt_pass;
