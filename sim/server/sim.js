@@ -285,8 +285,9 @@ export class Sim extends EventEmitter {
     }
     return true;
   }
-  beginTeleop() {
-    if (this.mode !== 'stuck') return false;
+  beginTeleop(force = false) {
+    if (this.mode !== 'stuck' && !(force && this.mode === 'auto')) return false;
+    if (this.mode === 'auto') this.stuckReason = null; // forced dev session: no job context
     this.mode = 'teleop';
     for (let i = 0; i < this.nu; i++) this.teleTargets[i] = this.ctrl[i];
     this.emit('status');

@@ -48,8 +48,8 @@ app.post('/api/scenario/:name', (req, res) => {
 
 // Teleop gate. The agents core calls begin AFTER the IDKit claim verified;
 // end runs the sim's own resume check (the fix must actually hold).
-app.post('/api/teleop/begin', requireToken, (_req, res) => {
-  if (!sim.beginTeleop()) return res.status(409).json({ error: `robot is not stuck (mode=${sim.mode})` });
+app.post('/api/teleop/begin', requireToken, (req, res) => {
+  if (!sim.beginTeleop(req.body.force === true)) return res.status(409).json({ error: `robot is not stuck (mode=${sim.mode})` });
   broadcast({ t: 'toast', level: 'ok', msg: 'Teleop session started.' });
   res.json({ ok: true, robot: sim.status() });
 });

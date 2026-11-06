@@ -55,7 +55,8 @@ function setRobot(r) {
   chip('s-time', `t: ${r.time.toFixed(1)}s`);
   chip('s-held', r.holding ? `hands: ${r.held}` : 'hands: free', r.holding ? 'warn' : '');
   chip('s-done', `shipped: ${r.shipped}`);
-  $('b-teleop').disabled = !(canControl && r.mode === 'stuck');
+  $('b-teleop').disabled = !(canControl && (r.mode === 'stuck' || r.mode === 'auto'));
+  $('b-teleop').textContent = r.mode === 'auto' ? '🕹 take control (dev)' : '🕹 begin teleop';
   $('b-done').disabled = !(canControl && r.mode === 'teleop');
   const panel = $('stuck');
   if (r.mode === 'stuck' || r.mode === 'teleop') {
@@ -66,15 +67,15 @@ function setRobot(r) {
   } else panel.style.display = 'none';
 }
 
-async function post(url) {
-  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }) });
+async function post(url, extra = {}) {
+  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token, ...extra }) });
   if (!res.ok) toast((await res.json()).error || res.statusText, 'error');
 }
 document.body.addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
   if (b.dataset.scenario) post(`/api/scenario/${b.dataset.scenario}`);
   else if (b.dataset.action && ws?.readyState === 1) ws.send(JSON.stringify({ t: 'action', id: b.dataset.action }));
-  else if (b.id === 'b-teleop') post('/api/teleop/begin');
+  else if (b.id === 'b-teleop') post('/api/teleop/begin', { force: robot?.mode === 'auto' });
   else if (b.id === 'b-done') post('/api/teleop/end');
 });
 
