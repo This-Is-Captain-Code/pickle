@@ -58,7 +58,7 @@ export interface MockCheckpointOptions {
   delayMs?: number;
 }
 
-/** Stands in for AgentPassCheckpoint (World IdP device grant). */
+/** Mocked payout-approval checkpoint (the World IdP device-grant version was removed for World ID 4.0 + IDKit). */
 export class MockApprovalCheckpoint implements ApprovalCheckpoint {
   private pending = new Map<string, ApprovalRequest>();
 
@@ -70,7 +70,7 @@ export class MockApprovalCheckpoint implements ApprovalCheckpoint {
     return {
       approvalId,
       userCode: 'PICKL-42',
-      verificationUri: `https://auth.world.org/activate?mock=1&user_code=PICKL-42`,
+      verificationUri: `https://example.invalid/approve?mock=1&user_code=PICKL-42`,
       expiresAt: Date.now() + 20 * 60_000,
     };
   }

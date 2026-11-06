@@ -1,0 +1,39 @@
+{
+  "galileo": {
+    "chainId": 16602,
+    "explorer": "https://chainscan-galileo.0g.ai",
+    "contracts": {
+      "SmokeStore": {
+        "address": "0xaEd150ed47D91A489AfF7631bb06F5d4CCBF2162",
+        "deployTx": "0x990dfdf8ba9ea9f6a7fbce1c0507f25bc00d32b413193f691547f8527663218d",
+        "deployer": "0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd",
+        "block": 64153100,
+        "purpose": "smoke:chain test contract (not used by the app)",
+        "deployedAt": "2026-11-06T10:36:58.428Z"
+      },
+      "PickleEscrow": {
+        "address": "0xCcdbe1e1f597dbc8Ce5788a35f5f1383D2990f9a",
+        "deployTx": "0x904c0eaa9f6482f82251d5b95dcf248269eafecf33a581b509c4f9c62422ce89",
+        "deployer": "0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd",
+        "block": 64162006,
+        "maxPayout": "5000000000000000",
+        "demoPayout": "1000000000000000",
+        "abi": "shared/abi/PickleEscrow.json",
+        "purpose": "Pickle bounty escrow: robots hire humans",
+        "deployedAt": "2026-11-06T11:48:46.696Z"
+      }
+    },
+    "robots": {
+      "G1": {
+        "id": "0xdb8e063E2069Ae59DF257497E58cD3f2fFD7E750",
+        "agentWallet": "AGENT_G1",
+        "agent": "0xDAD48EdA182bDED77427e7085673A7cA0d4c540A"
+      },
+      "R2": {
+        "id": "0x5ad164A6e19120410ded00f8C2C7B04E09fD23FF",
+        "agentWallet": "AGENT_2",
+        "agent": "0xabC77d1ee26f0833e0408c137878162dB698D90c"
+      }
+    }
+  }
+}

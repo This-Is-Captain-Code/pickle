@@ -7,7 +7,7 @@ a Body** track ($5k incl. $1k best-on-real-hardware):
 | Interface | Live class (you build) | Mock (works today) |
 |---|---|---|
 | `DecisionEngine` | `ZeroGDecisionEngine` ([src/compute.ts](src/compute.ts)) | `MockDecisionEngine` |
-| `EpisodeLogger` | `ZeroGEpisodeLogger` ([src/storage.ts](src/storage.ts)) | `MockEpisodeLogger` |
+| `EpisodeLogger` | `StorageEpisodeLogger` (lives in [agents/src/storage.ts](../agents/src/storage.ts): it shares the agents tx queue) | `MockEpisodeLogger` |
 
 Run the pipeline against your work any time: `ZEROG_MODE=live npm run dev`
 from the repo root (default is `mock`). `MockDecisionEngine({unreachable:true})`
