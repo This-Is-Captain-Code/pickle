@@ -60,7 +60,7 @@ const HAZARD_RADIUS = 0.6;
 const STUCK = {
   obstructed: { title: 'Rack rail fell across the feeder', detail: 'My hands are blocked above the box: the rack rail has come down across the feeder. Back off, lift the rail off and set it aside, then continue.', urgency: 'medium', reward: 0.075 },
   hazard:     { title: 'Person inside the robot cell', detail: 'A person is within 0.6 m of a hand. The robot is holding position. Tuck the arms, get the person out, confirm the cell is clear.', urgency: 'high', reward: 0.1 },
-  lowconf:    { title: 'Cannot localize the next box', detail: 'The box is not on the feeder mark (pose deviates > 15 cm). Nudge it back onto the green mark, accept its new position, or skip it.', urgency: 'low', reward: 0.05 },
+  lowconf:    { title: 'Bad box on my feeder — knock it off', detail: 'The box is off the feeder mark and I cannot grasp it (pose deviates > 10 cm). Take control and sweep it off my feeder, nudge it back onto the green mark, or discard it.', urgency: 'low', reward: 0.05 },
 };
 
 const ACTIONS = {
@@ -172,11 +172,13 @@ export class Sim extends EventEmitter {
       mode: this.mode, stuckReason: this.stuckReason, time: +this.data.time.toFixed(2),
       waypoint: ROUTINE[this.step], qpos: this.actQadr.map((a) => +this.qpos[a].toFixed(3)),
       ctrl: Array.from(this.ctrl).map((v) => +v.toFixed(3)), personNear: this.personNear,
-      targetDisplaced: this.targetDisplacement() > 0.15, ncon: this.data.ncon,
+      targetDisplaced: this.targetDisplacement() > 0.10, ncon: this.data.ncon,
       obstacleInPath: this.obstacleInPath(), sweepHigh: this.sweepHigh, dragging: this.drag ? this.drag.body : null,
       boxesProcessed: this.processed, shipped: this.shipped || 0, holding: !!this.held, held: this.held ? this.held.kind : null,
       manualActions: this.mode === 'teleop' ? MANUAL.map((a) => ({ ...a, available: a.id === 'pick' ? !this.held : !!this.held })) : [],
       person: { pos: [0, 1, 2].map((i) => +this.mocapPos[3 * this.personMocap + i].toFixed(3)), motion: this.personMotion() },
+      box: this.boxPos().map((v) => +v.toFixed(3)),
+      wrists: { l: this.wrist(this.leftWrist).map((v) => +v.toFixed(3)), r: this.wrist(this.rightWrist).map((v) => +v.toFixed(3)) },
       actions: this.stuckReason ? ACTIONS[this.stuckReason].map((a) => ({ id: a.id, label: a.label, desc: a.desc, done: this.actionsDone.includes(a.id), available: a.needs ? a.needs(this) : true })) : [],
       actionsDone: this.actionsDone, resume: this.resumeCheck(), macroRunning: !!this.macro, macroError: this.macroError || null,
     };
@@ -187,7 +189,7 @@ export class Sim extends EventEmitter {
     switch (this.stuckReason) {
       case 'hazard': return this.personNear ? 'A person is still within 0.6 m of a hand.' : !this.actionsDone.includes('confirm_clear') ? 'Confirm the area is clear first.' : null;
       case 'obstructed': return this.held?.kind === 'crate' ? 'Still holding the rail: set it down first.' : this.obstacleInPath() ? 'The rail is still across the feeder. Lift it off and set it aside, or call the crew.' : null;
-      case 'lowconf': return this.held?.kind === 'box' ? null : this.held?.kind === 'crate' ? 'Drop the rail first.' : this.targetDisplacement() > 0.15 ? 'The box is still off the feeder mark. Pick it where it is, nudge it back, or discard it.' : null;
+      case 'lowconf': return this.held?.kind === 'box' ? null : this.held?.kind === 'crate' ? 'Drop the rail first.' : this.targetDisplacement() > 0.10 ? 'The box is still off the feeder mark. Knock it off my feeder, nudge it back, or discard it.' : null;
       default: return null;
     }
   }
@@ -229,7 +231,7 @@ export class Sim extends EventEmitter {
   personHeard() { if (!this.actionsDone.includes('speak')) this.actionsDone.push('speak'); const left = this.personLeaveSlowly(0.8); this.emit('status'); return left; }
   personMotion() { const a = this.anims.find((x) => x.id === this.personMocap); if (!a) return null; const k = Math.min(1, (this.data.time - a.t0) / a.dur); return { walking: k < 1, heading: Math.atan2(a.to[1] - a.from[1], a.to[0] - a.from[0]) }; }
   personLeave() { this.setPerson(PERSON_PARK); }
-  knockTarget() { if (this.held) return; const b = this.boxes[this.current]; this.placeFree(b.qadr, b.dadr, [0.50, 0.16, 0.84]); this.qvel[b.dadr] = 0.2; this.qvel[b.dadr + 1] = 0.5; } // ends up ~25 cm off the mark, still on the bench
+  knockTarget() { if (this.held) return; const b = this.boxes[this.current]; this.placeFree(b.qadr, b.dadr, [0.44, 0.11, 0.84]); this.qvel[b.dadr] = 0.05; this.qvel[b.dadr + 1] = 0.15; } // ends ~13 cm off the mark (lowconf fires at >10 cm) and within the leaning arm's reach
   restoreTarget() { const b = this.boxes[this.current]; this.placeFree(b.qadr, b.dadr, TARGET_HOME); }
   // feeder: bring in the next box from the pool
   feedNext() { this.current = (this.current + 1) % this.boxes.length; const b = this.boxes[this.current]; this.placeFree(b.qadr, b.dadr, [TARGET_HOME[0], TARGET_HOME[1], TARGET_HOME[2] + 0.03]); }
@@ -390,7 +392,7 @@ export class Sim extends EventEmitter {
     for (let i = 0; i < this.nu; i++) err = Math.max(err, Math.abs(this.qpos[this.actQadr[i]] - target[i]));
 
     // before committing to a grasp the box must be on the feeder mark
-    if ((ROUTINE[this.step] === 'approach' || ROUTINE[this.step] === 'descend') && !this.held && this.targetDisplacement() > 0.15) return this.becomeStuck('lowconf');
+    if ((ROUTINE[this.step] === 'approach' || ROUTINE[this.step] === 'descend') && !this.held && this.targetDisplacement() > 0.10) return this.becomeStuck('lowconf');
     // blocked: large tracking error for 3 s, or a step that stalls without converging (partial contact)
     if (err > 0.25) { this.highErrSince ??= t; if (t - this.highErrSince > 3.0) return this.becomeStuck('obstructed'); }
     else this.highErrSince = null;
@@ -413,6 +415,20 @@ export class Sim extends EventEmitter {
     let n = Math.min(Math.round(seconds / dt), 100);
     if (this.mode === 'teleop') {
       this.stepMacro();
+      // Swat-to-discard: in a lowconf job, knocking the bad box clean off the
+      // feeder (far away or fallen off the bench) counts as discarding it —
+      // the feeder brings in the next box and the resume check clears.
+      if (this.stuckReason === 'lowconf' && !this.held) {
+        const p = this.boxPos();
+        const gone = Math.hypot(p[0] - TARGET_HOME[0], p[1] - TARGET_HOME[1]) > 0.38 || p[2] < 0.6;
+        if (gone) {
+          const b = this.boxes[this.current];
+          this.placeFree(b.qadr, b.dadr, BOX_PARK[b.i]);
+          this.feedNext();
+          if (!this.actionsDone.includes('skip_part')) this.actionsDone.push('skip_part');
+          this.emit('status');
+        }
+      }
       for (let i = 0; i < this.nu; i++) this.ctrl[i] = this.drag && this.actLimb[i] === this.drag.limb ? this.qpos[this.actQadr[i]] : this.teleTargets[i];
       if (this.drag) {
         const b = this.drag.body, x = this.data.xpos, v = this.data.cvel;

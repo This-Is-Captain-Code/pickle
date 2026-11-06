@@ -177,7 +177,7 @@ async function onClaim(m: { claimId: string; bountyId: string; device?: string }
     pb.timer = setTimeout(() => expire(dev), 10 * 60_000);
     try { await simPost('/api/teleop/begin'); } catch (e: any) { log('sim', `teleop begin failed: ${e.message}`); }
     await setSimBounty({ id: pb.bounty.id, title: pb.bounty.title, state: 'claimed' });
-    ack(m.claimId, 'claimed', { instruction: 'Robot unlocked — you are in control. Clear the obstacle (Spectacles hands or the viewer), then press ✅ work done.' });
+    ack(m.claimId, 'claimed', { instruction: 'Robot unlocked — you are in control. Sweep your arm to knock the blockage off the feeder, then press ✅ work done.' });
     log('world', `claimed by unique human ${outcome.nullifier.slice(0, 12)}… — teleop session unlocked`);
   } else {
     pb.phase = 'awaiting_power';

@@ -91,8 +91,9 @@ function updateHand(h, data, t) {
 }
 
 // ---------- hand offsets (m, XR frame) -> G1 joint targets (rad) ----------
-// Arms only: the G1's pelvis is welded, legs/waist/wrists stay at their current
-// targets (nulls). Reach forward = -z in XR.
+// Arms + a forward waist lean on deep reaches (the G1's arms alone max out at
+// ~0.45 m from the waist axis; leaning buys the extra reach a human expects).
+// Legs/wrists stay at their current targets (nulls). Reach forward = -z in XR.
 function armTargets(h) {
   if (!h.offset) return null;
   const [dx, dy, dz] = h.offset, reach = -dz, out = {};
@@ -102,6 +103,7 @@ function armTargets(h) {
     ? mapAxis(dx, -0.15, 0.3, 0.3, -1.6)                                    // right hand out (+x) -> abduct (-roll)
     : mapAxis(dx, -0.3, 0.15, 1.6, -0.3);                                   // left hand out (-x) -> abduct (+roll)
   out[p + 'elbow'] = mapAxis(reach, -0.1, 0.35, 1.9, -0.4);                 // reach forward -> extend
+  out._reach = reach;
   return out;
 }
 
@@ -152,9 +154,17 @@ function sendAction(id) {
 setInterval(() => {
   if (!actuatorIndex || robotMode !== 'teleop' || simWs?.readyState !== WebSocket.OPEN) return;
   const targets = new Array(nu).fill(null);
+  let maxReach = null;
   for (const h of [hands.left, hands.right]) {
     const t = armTargets(h);
-    if (t) for (const [name, v] of Object.entries(t)) { const i = actuatorIndex.get(name); if (i != null) targets[i] = +v.toFixed(4); }
+    if (!t) continue;
+    maxReach = maxReach == null ? t._reach : Math.max(maxReach, t._reach);
+    delete t._reach;
+    for (const [name, v] of Object.entries(t)) { const i = actuatorIndex.get(name); if (i != null) targets[i] = +v.toFixed(4); }
+  }
+  if (maxReach != null) {
+    const i = actuatorIndex.get('waist_pitch');
+    if (i != null) targets[i] = +mapAxis(maxReach, 0.05, 0.35, 0, 0.5).toFixed(4); // deep reach -> lean in
   }
   if (targets.every((v) => v == null)) return;
   if (lastSent && targets.every((v, i) => v == null || lastSent[i] == null || Math.abs(v - lastSent[i]) < 0.005)) return;

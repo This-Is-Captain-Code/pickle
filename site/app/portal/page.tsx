@@ -85,9 +85,9 @@ export default function Portal() {
       accent: 'var(--cyan)',
       img: '/jobs/teleop.jpg',
       robot: 'g1-sim-01 · Unitree G1 (MuJoCo)',
-      title: 'Rail fell across my feeder — take control and lift it off',
+      title: 'Bad box on my feeder — knock it off',
       detail:
-        'Teleop session via Snap Spectacles hand-tracking: your hands become its arms, pinch to grip. Proof: the robot’s own resume check. Your session is recorded as a training demonstration.',
+        'Teleop via Snap Spectacles hand-tracking: your hands become its arms — one sweep clears the box. Proof: the robot’s own resume check. Your session is recorded as a training demonstration.',
       reward: '12.50',
       rewardNote: 'per session + data license',
       status: 'OPEN' as Status,
