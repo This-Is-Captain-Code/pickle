@@ -20,6 +20,8 @@ function connect() {
     else if (m.t === 'robot') setRobot(m.robot);
     else if (m.t === 'bounty') setBounty(m.bounty);
     else if (m.t === 'stuck') toast(`Stuck: ${m.event.title}`, 'warn');
+    else if (m.t === 'bounty_complete') $('complete').style.display = 'flex';
+    else if (m.t === 'bounty_reset') $('complete').style.display = 'none';
     else if (m.t === 'toast') toast(m.msg, m.level);
     else if (m.t === 'denied') toast(m.msg, 'error');
   };

@@ -135,10 +135,27 @@ sim.on('stuck', async (info) => {
 
 // ---------- main loop: 60 Hz physics, 30 Hz state stream ----------
 let last = process.hrtime.bigint();
+let bountyDone = false;
 setInterval(() => {
   const now = process.hrtime.bigint();
   const dt = Math.min(Number(now - last) / 1e9, 0.1); last = now;
   sim.advance(dt);
+  // Teleop win condition: the box hits the floor -> BOUNTY COMPLETE, then
+  // auto-restage after a few seconds so the demo loops.
+  if (!bountyDone && sim.mode === 'teleop' && !sim.held && sim.boxPos()[2] < 0.3) {
+    bountyDone = true;
+    broadcast({ t: 'bounty_complete' });
+    broadcast({ t: 'toast', level: 'ok', msg: 'BOUNTY COMPLETE 🥒' });
+    console.log('[demo] bounty complete — box on the floor');
+    setTimeout(() => {
+      if (BOX_SPOT.length === 3 && BOX_SPOT.every(Number.isFinite)) {
+        const b = sim.boxes[sim.current];
+        sim.placeFree(b.qadr, b.dadr, BOX_SPOT);
+      }
+      bountyDone = false;
+      broadcast({ t: 'bounty_reset' });
+    }, 6000);
+  }
 }, 1000 / 60);
 setInterval(() => broadcast({ t: 'state', time: +sim.data.time.toFixed(3), poses: sim.poses(), robot: sim.status() }), 1000 / 30);
 
