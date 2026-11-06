@@ -22,6 +22,9 @@ const WEBHOOK = process.env.AGENTS_WEBHOOK_URL || ''; // e.g. http://localhost:8
 // staged at boot when running the bounty story: SIM_SCENARIO=knock|obstacle|person.
 const SIM_MODE = (process.env.SIM_MODE ?? 'teleop').toLowerCase();
 const AUTO_SCENARIO = (process.env.SIM_SCENARIO ?? 'none').toLowerCase();
+// Where the box is staged for always-teleop sessions: closer than the feeder
+// mark and angled toward the right arm, well inside comfortable wrist reach.
+const BOX_SPOT = (process.env.SIM_BOX ?? '0.33,-0.12,0.89').split(',').map(Number);
 
 const sim = await Sim.create();
 const app = express();
@@ -137,8 +140,16 @@ process.on('unhandledRejection', (e) => console.error('[sim] unhandled rejection
 server.listen(PORT, () => {
   console.log(`pickle sim on http://localhost:${PORT}  (teleop token ${TOKEN === 'dev-token' ? 'dev-token (default)' : 'set'}; webhook ${WEBHOOK || 'off'}; mode ${SIM_MODE}; scenario ${AUTO_SCENARIO})`);
   // Always-teleop watchdog: whatever drops the sim back to auto (boot, reset,
-  // work done), control returns to the human within a second.
-  if (SIM_MODE === 'teleop') setInterval(() => { if (sim.mode === 'auto') sim.beginTeleop(true); }, 1000);
+  // work done), control returns to the human within a second — with the box
+  // staged at the comfortable teleop spot.
+  if (SIM_MODE === 'teleop') setInterval(() => {
+    if (sim.mode !== 'auto') return;
+    sim.beginTeleop(true);
+    if (BOX_SPOT.length === 3 && BOX_SPOT.every(Number.isFinite)) {
+      const b = sim.boxes[sim.current];
+      sim.placeFree(b.qadr, b.dadr, BOX_SPOT);
+    }
+  }, 1000);
   const auto = { obstacle: () => sim.spawnObstacle(), person: () => sim.personEnter(), knock: () => sim.knockTarget() }[AUTO_SCENARIO];
   if (auto) {
     // Retry until it takes. For knock, the displaced-box check only runs in
