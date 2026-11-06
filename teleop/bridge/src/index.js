@@ -130,7 +130,8 @@ function armTargetsIK(h) {
   const v = sub(h.abs, shoulder);
   // torso-aligned components -> robot frame (x fwd, y left, z up)
   const d = [dot(v, fwd), -dot(v, right), dot(v, up)];
-  const L = clamp(norm(d) * ARM_SCALE, 0.08, ARM_U + ARM_F - 0.01);
+  const Lraw = norm(d) * ARM_SCALE;
+  const L = clamp(Lraw, 0.08, ARM_U + ARM_F - 0.01);
   const dir = unit(d);
 
   // two-link: upper arm tilts off the shoulder->wrist line by alpha, elbow below
@@ -151,7 +152,8 @@ function armTargetsIK(h) {
   out[p + 'shoulder_pitch'] = clamp(pitch, -2.9, 2.5);
   out[p + 'shoulder_roll'] = clamp(roll, -2.2, 2.2);
   out[p + 'elbow'] = elbow;
-  out._reach = d[0];
+  // Lean only on reach DEFICIT (target beyond the arm), never at rest.
+  out._lean = clamp((Lraw - (ARM_U + ARM_F - 0.03)) / 0.15, 0, 1) * 0.5;
   return out;
 }
 
@@ -219,17 +221,19 @@ function sendAction(id) {
 setInterval(() => {
   if (!actuatorIndex || robotMode !== 'teleop' || simWs?.readyState !== WebSocket.OPEN) return;
   const targets = new Array(nu).fill(null);
-  let maxReach = null;
+  let maxReach = null, maxLean = null;
   for (const h of [hands.left, hands.right]) {
     const t = USE_IK && head ? armTargetsIK(h) : armTargets(h);
     if (!t) continue;
-    maxReach = maxReach == null ? t._reach : Math.max(maxReach, t._reach);
-    delete t._reach;
+    if (t._lean != null) maxLean = Math.max(maxLean ?? 0, t._lean);
+    if (t._reach != null) maxReach = Math.max(maxReach ?? -99, t._reach);
+    delete t._reach; delete t._lean;
     for (const [name, v] of Object.entries(t)) { const i = actuatorIndex.get(name); if (i != null) targets[i] = +v.toFixed(4); }
   }
-  if (maxReach != null) {
-    const i = actuatorIndex.get('waist_pitch');
-    if (i != null) targets[i] = +mapAxis(maxReach, 0.05, 0.35, 0, 0.5).toFixed(4); // deep reach -> lean in
+  const wi = actuatorIndex.get('waist_pitch');
+  if (wi != null) {
+    if (maxLean != null) targets[wi] = +maxLean.toFixed(4); // IK: lean on reach deficit only
+    else if (maxReach != null) targets[wi] = +mapAxis(maxReach, 0.05, 0.35, 0, 0.5).toFixed(4); // legacy
   }
   if (targets.every((v) => v == null)) return;
   if (lastSent && targets.every((v, i) => v == null || lastSent[i] == null || Math.abs(v - lastSent[i]) < 0.002)) return;
