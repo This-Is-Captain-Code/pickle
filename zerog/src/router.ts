@@ -83,8 +83,10 @@ export async function routerChat(cfg: RouterConfig, messages: ChatMessage[], ext
 
     if (!res.ok) {
       const code = json?.error?.code ?? json?.error?.type ?? 'unknown';
-      const rid = json?.request_id ? ` request_id=${json.request_id}` : '';
-      lastErr = `HTTP ${res.status} ${code}${rid}`;
+      const ids = [json?.request_id && `request_id=${json.request_id}`, res.headers.get('x-request-id') && `x-request-id=${res.headers.get('x-request-id')}`]
+        .filter(Boolean).join(' ');
+      const msg = typeof json?.error?.message === 'string' ? ` "${json.error.message.slice(0, 160)}"` : '';
+      lastErr = `HTTP ${res.status} ${code}${msg}${ids ? ` (${ids})` : ''}`;
       if (TRANSIENT.has(res.status) && attempt < retries) {
         const ra = Number(res.headers.get('retry-after'));
         await sleep(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 10) * 1000 : 1500);
