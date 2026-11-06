@@ -124,18 +124,18 @@ void app_main(void) {
         static bool press_consumed = false;
         uint16_t pins;
         if (pca9535_get(&pins) == ESP_OK) {
-            // Charger module proof: the instant USB power arrives, say so.
+            // Power proof: report VBUS edges AND the boot-time state (a Watcher
+            // that wakes up unplugged is already a bounty waiting to happen).
             int vbus = (pins & EXP_VBUS_IN_DET) ? 0 : 1; // active low
-            if (vbus != last_vbus) {
-                if (last_vbus != -1) { // skip boot-time initial state
-                    char data[48];
-                    snprintf(data, sizeof(data), "{\"on\":%s,\"charging\":%s}",
-                             vbus ? "true" : "false",
-                             (pins & EXP_CHRG_DET) == 0 ? "true" : "false");
-                    monaid_net_event("power", data);
-                    ESP_LOGI(TAG, "power %s", vbus ? "ARRIVED" : "lost");
-                    if (!s_crashed) ui_say(vbus ? "power arrived!" : "power lost");
-                }
+            if (vbus != last_vbus && monaid_net_connected()) {
+                char data[64];
+                snprintf(data, sizeof(data), "{\"on\":%s,\"charging\":%s,\"initial\":%s}",
+                         vbus ? "true" : "false",
+                         (pins & EXP_CHRG_DET) == 0 ? "true" : "false",
+                         last_vbus == -1 ? "true" : "false");
+                monaid_net_event("power", data);
+                ESP_LOGI(TAG, "power %s%s", vbus ? "ARRIVED" : "lost", last_vbus == -1 ? " (initial)" : "");
+                if (!s_crashed && last_vbus != -1) ui_say(vbus ? "power arrived!" : "power lost");
                 last_vbus = vbus;
             }
             // Long-press = crash (sticky). While crashed, any click = recover.

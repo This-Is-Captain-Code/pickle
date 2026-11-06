@@ -21,6 +21,7 @@ typedef struct { uint16_t bg, fg; } palette_t;
 static palette_t pal(const char *s) {
     if (!strcmp(s, "PAID"))     return (palette_t){ C_GREEN,   C_BLACK };
     if (!strcmp(s, "VERIFIED")) return (palette_t){ C_GREEN,   C_BLACK };
+    if (!strcmp(s, "*-*"))      return (palette_t){ C_RED,     C_WHITE }; // dying on battery
     if (!strcmp(s, "BLOCKED"))  return (palette_t){ C_RED,     C_WHITE };
     if (!strcmp(s, "CLAIMED"))  return (palette_t){ C_CYAN,    C_BLACK };
     if (!strcmp(s, "JOB OPEN")) return (palette_t){ C_ORANGE,  C_BLACK };
@@ -67,11 +68,11 @@ static void redraw(void) {
     center(52, hdr, p.fg, p.bg, 1);
 
     if (s_qr && qr_size()) {
-        // Poster layout: state + payout up top, QR dead center, CTA below.
-        center(72, s_state, p.fg, p.bg, 3);
-        if (s_job_payout[0]) center(102, s_job_payout, p.fg, p.bg, 2);
-        int below = draw_qr(132);
-        center(below + 6, "SCAN TO CLAIM", p.fg, p.bg, 2);
+        // Poster layout: the state (or dying face) big up top, QR dead
+        // center, CTA below. Fits a v5 claim QR inside the round screen.
+        center(68, s_state, p.fg, p.bg, 4);
+        int below = draw_qr(116);
+        center(below + 6, s_say[0] ? s_say : "SCAN TO CLAIM", p.fg, p.bg, 2);
     } else {
         // THE STATE — round screen, dead center.
         center(120, s_state, p.fg, p.bg, 5);

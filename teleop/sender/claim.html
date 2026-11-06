@@ -57,7 +57,7 @@ if (!bountyId) {
     if (m.type !== 'claim_ack' || m.claimId !== claimId) return;
     acked = true;
     if (m.status === 'verifying') show('wait', 'VERIFYING…', 'Proving you are a unique human…');
-    else if (m.status === 'claimed') show('ok', 'YOURS ✓', `<b>${m.instruction || 'Unplug the robot and move it to the working charging pad.'}</b>`);
+    else if (m.status === 'claimed') show('ok', 'YOURS ✓', `<b>${m.instruction || 'Plug the robot into power.'}</b>`);
     else if (m.status === 'verified') show('ok', 'VERIFIED 🥒', 'The robot\'s agent confirmed the fix. Bounty complete — thank you!');
     else if (m.status === 'rejected') show('err', 'REJECTED', m.reason || 'Verification failed or bounty already claimed.');
   };

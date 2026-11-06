@@ -23,14 +23,12 @@ const log = (tag: string, msg: string) => console.log(`[${tag}] ${msg}`);
 const providers = buildProviders();
 const devices = new Devices(BROKER_URL, env('BROKER_USER', 'bridge'), env('BROKER_PASS'));
 
-type Phase = 'open' | 'verifying' | 'awaiting_pickup' | 'carrying' | 'verified';
+type Phase = 'open' | 'verifying' | 'awaiting_power' | 'verified';
 interface PhysicalBounty {
   bounty: Bounty;
   phase: Phase;
   claimId?: string;
-  pickedUpAt?: number;
-  rssiBefore?: number;
-  rssiAfter?: number;
+  claimedAt?: number;
   timer?: NodeJS.Timeout;
 }
 const byDevice = new Map<string, PhysicalBounty>(); // one active bounty per device
@@ -79,22 +77,24 @@ devices.on('status', (dev, online) => log('mqtt', `${dev} is ${online ? 'online'
 devices.on('evt', (evt) => {
   const pb = byDevice.get(evt.dev);
   if (evt.kind === 'heartbeat' && typeof evt.data.rssi === 'number') lastRssi.set(evt.dev, evt.data.rssi);
-  if (evt.kind === 'crash') onCrash(evt.dev, evt.data).catch((e) => log('agent', `crash handling failed: ${e.message}`));
-  if (evt.kind === 'power' && pb) onPower(pb, evt.dev, evt.data.on === true).catch((e) => log('agent', `power handling failed: ${e.message}`));
+  if (evt.kind === 'crash') log('robot', `${evt.dev} crash event (ignored — power loss is the trigger now)`);
+  if (evt.kind === 'power') {
+    if (!pb && evt.data.on === false) onPowerLoss(evt.dev, evt.data).catch((e) => log('agent', `power-loss handling failed: ${e.message}`));
+    if (pb && evt.data.on === true) onPowerRestored(pb, evt.dev).catch((e) => log('agent', `power-restore handling failed: ${e.message}`));
+  }
 });
 
-// ---------- 1. stuck -> decision -> bounty + QR ----------
-async function onCrash(dev: string, data: Record<string, unknown>) {
-  if (byDevice.has(dev)) return; // one bounty per device at a time
-  log('robot', `${dev} reports crash ${JSON.stringify(data)}`);
-  const situation = { stuckReason: 'crash', sim: data.sim === true, rssi: lastRssi.get(dev) ?? null, device: dev };
+// ---------- 1. power lost -> decision -> bounty + QR (the dying poster) ----------
+async function onPowerLoss(dev: string, data: Record<string, unknown>) {
+  log('robot', `${dev} lost power${data.initial ? ' (woke up unplugged)' : ''} — running on battery`);
+  const situation = { stuckReason: 'power_lost', onBattery: true, initial: data.initial === true, rssi: lastRssi.get(dev) ?? null, device: dev };
 
   let decision;
   try {
     decision = await providers.engine.decide({
       robotId: dev,
       situation,
-      question: 'Robot is down and cannot recover alone. Choose the response.',
+      question: 'Robot lost external power and is draining its battery. It cannot move itself. Choose the response.',
       options: ['post_physical_bounty', 'wait_and_retry', 'alert_owner'],
     });
   } catch (err) {
@@ -112,20 +112,20 @@ async function onCrash(dev: string, data: Record<string, unknown>) {
   const bounty: Bounty = {
     id: `b${Date.now().toString(36)}`,
     kind: 'physical', robotId: dev,
-    title: 'Move me to the working charging pad', reason: String(data.sim ? 'simulated crash' : 'crash'),
+    title: 'Plug me back in', reason: 'power_lost',
     payoutWei: '0', // settlement out of scope — the bounty ends at verified
     state: 'open',
     createdAt: Date.now(), expiresAt: Date.now() + 10 * 60_000,
   };
-  const pb: PhysicalBounty = { bounty, phase: 'open', rssiBefore: lastRssi.get(dev) };
+  const pb: PhysicalBounty = { bounty, phase: 'open' };
   byDevice.set(dev, pb);
   pb.timer = setTimeout(() => expire(dev), 10 * 60_000);
 
   const url = `${CLAIM_BASE_URL}/claim.html?b=${bounty.id}&d=${dev}`;
   publishGo(url); // keep the speakable /go short link pointing at the open bounty
-  devices.cmd(dev, { cmd: 'simulate', kind: 'recover' }); // clear the red takeover; the poster is the state now
   devices.cmd(dev, { cmd: 'job', id: bounty.id, url });
-  devices.cmd(dev, { cmd: 'state', state: 'JOB OPEN' });
+  devices.cmd(dev, { cmd: 'say', text: 'SCAN TO SAVE ME' });
+  devices.cmd(dev, { cmd: 'state', state: '*-*' }); // dying face, red poster
   log('bounty', `${bounty.id} posted on ${dev} — QR -> ${url}`);
 }
 
@@ -151,36 +151,36 @@ async function onClaim(m: { claimId: string; bountyId: string; device?: string }
     return;
   }
   pb.bounty.state = 'claimed'; pb.bounty.nullifier = outcome.nullifier;
-  pb.phase = 'awaiting_pickup';
+  pb.phase = 'awaiting_power'; pb.claimedAt = Date.now();
   pb.timer && clearTimeout(pb.timer);
   pb.timer = setTimeout(() => expire(dev), PICKUP_TIMEOUT_MS);
-  ack(m.claimId, 'claimed', { instruction: 'Unplug the robot and move it to the working charging pad.' });
+  ack(m.claimId, 'claimed', { instruction: 'Plug the robot into power.' });
   devices.cmd(dev, { cmd: 'job', id: pb.bounty.id }); // no url -> QR comes down
   devices.cmd(dev, { cmd: 'state', state: 'CLAIMED' });
-  devices.cmd(dev, { cmd: 'say', text: 'unplug me & move me!' });
-  log('world', `claimed by unique human ${outcome.nullifier.slice(0, 12)}… — waiting for pickup (VBUS drop)`);
+  devices.cmd(dev, { cmd: 'say', text: 'plug me in!' });
+  log('world', `claimed by unique human ${outcome.nullifier.slice(0, 12)}… — waiting for power (VBUS up)`);
 }
 
-// ---------- 3. physical proof: VBUS down (picked up) then up (placed) ----------
-async function onPower(pb: PhysicalBounty, dev: string, on: boolean) {
-  if (pb.phase === 'awaiting_pickup' && !on) {
-    pb.phase = 'carrying'; pb.pickedUpAt = Date.now();
-    devices.cmd(dev, { cmd: 'say', text: 'carried! place me on the pad' });
-    log('proof', `${dev} unplugged — human picked it up`);
+// ---------- 3. physical proof: power comes back ----------
+async function onPowerRestored(pb: PhysicalBounty, dev: string) {
+  if (pb.phase === 'open' || pb.phase === 'verifying') {
+    // Someone plugged it in without claiming — robot is fine, bounty is moot.
+    log('bounty', `${pb.bounty.id} withdrawn: power restored before any claim`);
+    if (pb.claimId) ack(pb.claimId, 'rejected', { reason: 'Power was restored before the claim completed.' });
+    pb.timer && clearTimeout(pb.timer);
+    devices.cmd(dev, { cmd: 'job' });
+    devices.cmd(dev, { cmd: 'say', text: '' });
+    devices.cmd(dev, { cmd: 'state', state: 'IDLE' });
+    byDevice.delete(dev);
     return;
   }
-  if (pb.phase === 'carrying' && on) {
-    pb.rssiAfter = lastRssi.get(dev);
-    const carriedS = pb.pickedUpAt ? (Date.now() - pb.pickedUpAt) / 1000 : null;
-    log('proof', `${dev} plugged in at the new spot (carried ${carriedS?.toFixed(0)}s)`);
-    const situation = {
-      proof: 'vbus_cycle', carried_s: carriedS,
-      rssi_before: pb.rssiBefore ?? null, rssi_after: pb.rssiAfter ?? null,
-      charging: true, device: dev,
-    };
+  if (pb.phase === 'awaiting_power') {
+    const rescueS = pb.claimedAt ? (Date.now() - pb.claimedAt) / 1000 : null;
+    log('proof', `${dev} is charging again (${rescueS?.toFixed(0)}s after claim)`);
+    const situation = { proof: 'vbus_restored', seconds_since_claim: rescueS, charging: true, rssi: lastRssi.get(dev) ?? null, device: dev };
     const verdict = await providers.engine.decide({
       robotId: dev, situation,
-      question: 'Telemetry after human intervention: power lost, device carried, power restored at a new location. Is the relocation complete?',
+      question: 'Telemetry after human intervention: external power restored, battery charging. Is the robot rescued?',
       options: ['fix_confirmed', 'still_stuck'],
     });
     await providers.episodes.append({ ts: Date.now(), robotId: dev, bountyId: pb.bounty.id, decision: verdict, situation });

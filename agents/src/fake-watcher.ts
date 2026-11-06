@@ -28,7 +28,7 @@ client.on('connect', () => {
   client.subscribe(`monaid/${DEV}/cmd`);
   log('fake', `${DEV} online (broker ok)`);
   setInterval(() => evt('heartbeat', { up: process.uptime() | 0, n: ++beats, rssi }), 5000);
-  if (AUTO) setTimeout(() => { log('fake', 'LONG PRESS -> simulated crash'); evt('crash', { sim: true }); }, 2000);
+  if (AUTO) setTimeout(() => { log('fake', 'power cord yanked (VBUS down) -> dying on battery *-*'); evt('power', { on: false, charging: false, initial: false }); }, 2000);
 });
 let beats = 0;
 
@@ -54,8 +54,7 @@ function scanQr(url: string) {
     if (m.type !== 'claim_ack' || m.claimId !== claimId) return;
     log('human', `claim page shows: ${m.status}${m.reason ? ` (${m.reason})` : ''}`);
     if (m.status === 'claimed') {
-      setTimeout(() => { log('human', 'unplugging the watcher (VBUS down)'); evt('power', { on: false, charging: false }); }, 2500);
-      setTimeout(() => { rssi = -67; log('human', 'placed on the good pad (VBUS up, new RSSI)'); evt('power', { on: true, charging: true }); }, 7000);
+      setTimeout(() => { log('human', 'plugging the watcher into power (VBUS up)'); evt('power', { on: true, charging: true }); }, 3000);
     }
     if (m.status === 'verified') { log('human', 'VERIFIED 🥒 — loop complete'); setTimeout(() => process.exit(0), 12_000); }
   });
