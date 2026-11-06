@@ -1,25 +1,51 @@
 import { ZeroGUnreachable, type Decision, type DecisionEngine, type DecisionRequest } from '@pickle/shared';
-import { DEFAULT_MODEL, ROUTER_MAINNET, routerChat, type ChatMessage, type RouterConfig } from './router.js';
+import type { ChatBackend } from './backend.js';
+import { DirectBackend, TESTNET_RPC } from './direct.js';
+import { DEFAULT_MODEL, ROUTER_MAINNET, RouterBackend, type ChatMessage } from './router.js';
 
 export interface ZeroGComputeConfig {
-  /** 'router' (OpenAI-compatible, API key). 'direct' (broker SDK) is not implemented — D3 chose router. */
+  /**
+   * 'direct' → 0G Compute Network on Galileo testnet via the broker SDK (wallet-paid).
+   * 'router' → 0G Private Computer Router on mainnet (sk- API key).
+   * Request ids, validation, retry and the never-fake/safe-stop rule are identical for both.
+   */
   mode: 'router' | 'direct';
-  /** Router base URL. Mainnet: https://router-api.0g.ai/v1 (decision D3). */
+  /** Router: base URL (default https://router-api.0g.ai/v1) + sk- key. */
   routerBaseUrl?: string;
   routerApiKey?: string;
-  /** Direct mode only (unused). */
+  /** Direct: Galileo RPC + funded wallet + provider address (default: the reachable testnet chatbot). */
   rpcUrl?: string;
   privateKey?: string;
   providerAddress?: string;
-  /** Default 0gm-1.0-35b-a3b (TEE-attested, text + image). */
+  /** Router: model id (default 0gm-1.0-35b-a3b). Direct: optional override of the provider's model. */
   model: string;
-  /** Ask the Router to verify the TEE signature (`verify_tee: true`). Default true. */
+  /** Router: send verify_tee. Direct: reject responses whose TEE signature doesn't verify. */
   verifyTee?: boolean;
   timeoutMs?: number;
 }
 
 /** Explicit status a caller can surface when 0G is down. Never accompanied by a decision. */
 export const UNAVAILABLE = 'UNAVAILABLE' as const;
+
+export function buildBackend(c: ZeroGComputeConfig): ChatBackend {
+  if (c.mode === 'direct') {
+    return new DirectBackend({
+      rpcUrl: c.rpcUrl || TESTNET_RPC,
+      privateKey: c.privateKey ?? '',
+      providerAddress: c.providerAddress,
+      model: c.model || undefined,
+      timeoutMs: c.timeoutMs,
+      requireVerified: c.verifyTee === true,
+    });
+  }
+  return new RouterBackend({
+    baseUrl: c.routerBaseUrl || ROUTER_MAINNET,
+    apiKey: c.routerApiKey ?? '',
+    model: c.model || DEFAULT_MODEL,
+    verifyTee: c.verifyTee ?? true,
+    timeoutMs: c.timeoutMs,
+  });
+}
 
 const SYSTEM_PROMPT =
   'You are the decision module of a robot. Reply with ONLY a JSON object, no prose, no code fences: ' +
@@ -39,25 +65,18 @@ function parseDecision(content: string, options: string[]): { choice: string; re
 }
 
 /**
- * Live 0G Compute decision engine (Router). Every Decision carries the real 0G request id.
+ * Live 0G Compute decision engine. Every Decision carries the real 0G request id.
  * On any failure — network, HTTP error, missing request id, or an answer that isn't one of
  * the options after one retry — it throws ZeroGUnreachable. It NEVER returns a made-up decision.
  */
 export class ZeroGDecisionEngine implements DecisionEngine {
-  private router: RouterConfig;
+  readonly backend: ChatBackend;
 
-  constructor(private config: ZeroGComputeConfig) {
-    this.router = {
-      baseUrl: config.routerBaseUrl || ROUTER_MAINNET,
-      apiKey: config.routerApiKey ?? '',
-      model: config.model || DEFAULT_MODEL,
-      verifyTee: config.verifyTee ?? true,
-      timeoutMs: config.timeoutMs,
-    };
+  constructor(config: ZeroGComputeConfig, backend?: ChatBackend) {
+    this.backend = backend ?? buildBackend(config);
   }
 
   async decide(req: DecisionRequest): Promise<Decision> {
-    if (this.config.mode !== 'router') throw new ZeroGUnreachable(`compute mode "${this.config.mode}" not implemented`);
     if (req.options.length === 0) throw new Error('DecisionRequest.options is empty');
 
     const messages: ChatMessage[] = [
@@ -72,7 +91,7 @@ export class ZeroGDecisionEngine implements DecisionEngine {
 
     const tried: string[] = [];
     for (let attempt = 0; attempt < 2; attempt++) {
-      const r = await routerChat(this.router, messages, { temperature: 0 });
+      const r = await this.backend.chat(messages, { temperature: 0, max_tokens: 200 });
       tried.push(r.requestId);
       const parsed = parseDecision(r.content, req.options);
       if (parsed) {

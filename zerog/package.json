@@ -5,6 +5,8 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@pickle/shared": "*"
+    "@0gfoundation/0g-compute-ts-sdk": "0.9.0",
+    "@pickle/shared": "*",
+    "ethers": "6.13.1"
   }
 }
