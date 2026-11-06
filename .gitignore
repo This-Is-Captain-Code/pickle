@@ -1,0 +1,23 @@
+# Private working notes — never committed
+PRIVATE_NOTES.md
+
+# Secrets
+.env
+.env.*
+*.pem
+wifi_creds.h
+
+# Dependencies / build output
+node_modules/
+dist/
+build/
+managed_components/
+sdkconfig.old
+
+# Logs
+logs/
+*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
