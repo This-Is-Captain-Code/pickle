@@ -135,5 +135,19 @@ process.on('unhandledRejection', (e) => console.error('[sim] unhandled rejection
 server.listen(PORT, () => {
   console.log(`pickle sim on http://localhost:${PORT}  (teleop token ${TOKEN === 'dev-token' ? 'dev-token (default)' : 'set'}; webhook ${WEBHOOK || 'off'}; scenario ${AUTO_SCENARIO})`);
   const auto = { obstacle: () => sim.spawnObstacle(), person: () => sim.personEnter(), knock: () => sim.knockTarget() }[AUTO_SCENARIO];
-  if (auto) setTimeout(() => { auto(); console.log(`[demo] auto-staged scenario: ${AUTO_SCENARIO}`); }, 6000);
+  if (auto) {
+    // Retry until it takes. For knock, the displaced-box check only runs in
+    // the approach/descend steps — staged anywhere else, the robot grasps the
+    // box anyway — so wait for the approach window with free hands.
+    const timer = setInterval(() => {
+      if (sim.mode !== 'auto') return clearInterval(timer); // staged (or someone else got it stuck)
+      if (AUTO_SCENARIO === 'knock') {
+        const st = sim.status();
+        if (st.holding || st.waypoint !== 'approach') return;
+      }
+      auto();
+      console.log(`[demo] auto-staged scenario: ${AUTO_SCENARIO}`);
+      clearInterval(timer);
+    }, 1000);
+  }
 });
