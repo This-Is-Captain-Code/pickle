@@ -22,13 +22,13 @@
 
     <!-- the work table: top at 0.81 m, box on it; knock the box to the floor
          to complete the bounty -->
-    <geom name="table" type="box" size="0.15 0.28 0.02" pos="0.47 0 0.79" rgba="0.88 0.86 0.82 1"/>
+    <geom name="table" type="box" size="0.15 0.13 0.02" pos="0.47 0 0.79" rgba="0.88 0.86 0.82 1"/>
     <geom name="table_leg" type="box" size="0.05 0.05 0.37" pos="0.47 0 0.40" rgba="0.30 0.32 0.36 1"/>
-    <geom name="table_foot" type="box" size="0.13 0.18 0.015" pos="0.47 0 0.015" rgba="0.24 0.26 0.29 1"/>
+    <geom name="table_foot" type="box" size="0.13 0.11 0.015" pos="0.47 0 0.015" rgba="0.24 0.26 0.29 1"/>
 
     <!-- green floor zones either side: wherever the box lands counts -->
-    <geom name="drop_zone_r" class="marker" type="box" size="0.18 0.16 0.002" pos="0.47 -0.52 0.002" rgba="0 0.76 0.19 0.45"/>
-    <geom name="drop_zone_l" class="marker" type="box" size="0.18 0.16 0.002" pos="0.47 0.52 0.002" rgba="0 0.76 0.19 0.45"/>
+    <geom name="drop_zone_r" class="marker" type="box" size="0.18 0.16 0.002" pos="0.47 -0.36 0.002" rgba="0 0.76 0.19 0.45"/>
+    <geom name="drop_zone_l" class="marker" type="box" size="0.18 0.16 0.002" pos="0.47 0.36 0.002" rgba="0 0.76 0.19 0.45"/>
 
     <body name="box0" pos="0.40 0 0.875"><freejoint name="box0_free"/><geom name="box0" type="box" size="0.06 0.09 0.06" mass="0.4" rgba="1 0.68 0 1"/></body>
 
