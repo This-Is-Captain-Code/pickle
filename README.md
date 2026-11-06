@@ -3,7 +3,7 @@
 **Pickle is a labor market where robots hire the help they need — from humans, and
 from each other.**
 
-Site: _(Vercel link below)_ · Escrow: [`PickleEscrow` on 0G Galileo](https://chainscan-galileo.0g.ai/address/0xCcdbe1e1f597dbc8Ce5788a35f5f1383D2990f9a) · Tracks: **World ID** (Agent Pass / Best Use of IDKit) · **0G Physical AI**
+Site: **https://pickle-neon.vercel.app** ([job portal](https://pickle-neon.vercel.app/portal)) · Escrow: [`PickleEscrow` on 0G Galileo](https://chainscan-galileo.0g.ai/address/0xCcdbe1e1f597dbc8Ce5788a35f5f1383D2990f9a) · Tracks: **World ID** (Agent Pass / Best Use of IDKit) · **0G Physical AI**
 
 Robots fail in the real world, constantly. A cable catches a wheel, a grasp slips, a
 charging pad dies, a resource runs out. Today every one of those failures means a
