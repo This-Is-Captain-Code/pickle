@@ -22,9 +22,16 @@ const WEBHOOK = process.env.AGENTS_WEBHOOK_URL || ''; // e.g. http://localhost:8
 // staged at boot when running the bounty story: SIM_SCENARIO=knock|obstacle|person.
 const SIM_MODE = (process.env.SIM_MODE ?? 'teleop').toLowerCase();
 const AUTO_SCENARIO = (process.env.SIM_SCENARIO ?? 'none').toLowerCase();
-// Where the box is staged for teleop sessions: centered between the hands'
-// rest positions (wrist midpoint 0.27, 0, 0.87); drop zone on the right.
-const BOX_SPOT = (process.env.SIM_BOX ?? '0.28,0,0.875').split(',').map(Number);
+// Where the box is staged for teleop sessions: centered, one small reach in
+// front of the hands' rest midpoint (0.27, 0, 0.87); drop zone on the right.
+const BOX_SPOT = (process.env.SIM_BOX ?? '0.34,0,0.875').split(',').map(Number);
+// The pose the bridge commands at the user's calibration rest: the robot
+// idles hands-over-table instead of slumping at ctrl=0.
+const REST_POSE = {
+  left_shoulder_pitch: -0.625, right_shoulder_pitch: -0.625,
+  left_shoulder_roll: 0.333, right_shoulder_roll: -0.333,
+  left_elbow: 1.389, right_elbow: 1.389,
+};
 
 const sim = await Sim.create();
 const app = express();
@@ -145,6 +152,7 @@ server.listen(PORT, () => {
   if (SIM_MODE === 'teleop') setInterval(() => {
     if (sim.mode !== 'auto') return;
     sim.beginTeleop(true);
+    sim.setTeleop(sim.actNames.map((n) => REST_POSE[n] ?? null));
     if (BOX_SPOT.length === 3 && BOX_SPOT.every(Number.isFinite)) {
       const b = sim.boxes[sim.current];
       sim.placeFree(b.qadr, b.dadr, BOX_SPOT);
