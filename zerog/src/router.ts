@@ -11,6 +11,7 @@
  * Nothing in here ever invents a response.
  */
 import { ZeroGUnreachable } from '@pickle/shared';
+import type { ChatBackend, ChatResult } from './backend.js';
 
 export const ROUTER_MAINNET = 'https://router-api.0g.ai/v1';
 export const DEFAULT_MODEL = '0gm-1.0-35b-a3b';
@@ -35,18 +36,15 @@ export interface RouterConfig {
   retries?: number;
 }
 
-export interface RouterResult {
-  content: string;
-  /** Canonical 0G request id (`x_0g_trace.request_id`). */
-  requestId: string;
-  /** OpenAI-style response `id` (kept alongside; docs don't say it equals request_id). */
-  responseId?: string;
-  model: string;
-  latencyMs: number;
-  provider?: string;
-  teeVerified?: boolean;
-  costNeuron?: string;
-  usage?: Record<string, unknown>;
+export type RouterResult = ChatResult;
+
+/** Router as a ChatBackend. */
+export class RouterBackend implements ChatBackend {
+  readonly kind = 'router' as const;
+  constructor(private cfg: RouterConfig) {}
+  chat(messages: ChatMessage[], extra: Record<string, unknown> = {}): Promise<ChatResult> {
+    return routerChat(this.cfg, messages, extra);
+  }
 }
 
 const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -110,6 +108,7 @@ export async function routerChat(cfg: RouterConfig, messages: ChatMessage[], ext
       teeVerified: trace.tee_verified,
       costNeuron: trace.billing?.total_cost?.toString(),
       usage: json?.usage,
+      backend: 'router',
     };
   }
   throw new ZeroGUnreachable(lastErr);

@@ -29,28 +29,41 @@ npm run smoke:chain -- --fresh   # deploy a new SmokeStore and record it (2 txs)
 - **Needs:** `DEPLOYER_PRIVATE_KEY` funded.
 - **Fails if:** the chain ID is wrong, the balance is 0, a tx reverts, or the read-back doesn't match.
 
-## smoke:compute — 0G Router (mainnet)
+## smoke:compute — text on testnet (direct) + vision on mainnet Router
 
 ```
-npm run smoke:compute
+npm run smoke:compute                 # text + vision; PASS needs both
+npm run smoke:compute -- --text-only  # vision reported as SKIPPED (never as PASS)
 ```
-- **Text:** a real `ZeroGDecisionEngine.decide()` call (the same code path as the agents core). The model must answer with strict JSON `{choice, reason}` and `choice` must be one of the options.
-- **Vision:** sends `agents/scripts/smoke/fixtures/red-square.png` as a base64 `image_url` data URL. The answer must contain "red".
-- **Printed for each call:** model, latency, **0G request id** (`x_0g_trace.request_id`), response `id`, `tee_verified`, provider and cost.
-- **Defaults:** `ZEROG_ROUTER_URL=https://router-api.0g.ai/v1`, `ZEROG_MODEL=0gm-1.0-35b-a3b`, `ZEROG_VERIFY_TEE=1`. The test refuses to run against the testnet router URL.
-- **Needs:** `ZEROG_ROUTER_KEY` (sk-…). An optional `ZEROG_MANAGEMENT_KEY` (mk-…) lets it print the balance.
+Each part is reported separately (`TEXT PASS/FAIL`, `VISION PASS/FAIL/SKIPPED`).
+
+**Text** — a real `ZeroGDecisionEngine.decide()` call, the same code path as the agents core. The answer must be strict JSON `{choice, reason}` with `choice` from the options; one retry, then UNAVAILABLE.
+- The backend comes from `ZEROG_COMPUTE_MODE`. Request ids, validation and safe-stop are identical for both.
+
+| Mode | Network | Paid by | Default model | Request id |
+|---|---|---|---|---|
+| `direct` (default) | Galileo testnet, broker SDK | `COMPUTE_WALLET` ledger | `qwen/qwen3.8-omni-flash`, provider `0xd6269e…C940`, streaming | `ZG-Res-Key` |
+| `router` | Mainnet Router | `ZEROG_ROUTER_KEY` | `0gm-1.0-35b-a3b` | `x_0g_trace.request_id` |
+
+**Vision** — always the mainnet Router, because testnet has no image-capable model (sponsors.md §2).
+- Sends `agents/scripts/smoke/fixtures/red-square.png` as a base64 `image_url`. The answer must contain "red".
+
+**Printed per call:** backend, model, latency, **0G request id**, response id, `tee_verified`, provider.
+
+**Needs:**
+- Text, direct mode: `COMPUTE_WALLET_PRIVATE_KEY` with a funded compute ledger. Check with `npx tsx zerog/scripts/fund-testnet-compute.ts`, which is read-only; it creates the ledger with `--ledger 3` and funds the provider with `--transfer 0.5`.
+- Vision: `ZEROG_ROUTER_KEY` with Router credits.
 
 ## smoke:compute-down — safe-stop when 0G is unreachable
 
 ```
 npm run smoke:compute-down
 ```
-- Points the real engine at three dead endpoints:
-  - a closed local port;
-  - an unresolvable host (`router.invalid`);
-  - a local server answering `503 no_available_provider`.
+- Points the real engine at five dead endpoints across **both** backends:
+  - router: a closed local port; an unresolvable host (`router.invalid`); a local server answering `503 no_available_provider`.
+  - direct: the Galileo RPC on a closed port; an unresolvable RPC host. In both, the broker can't initialise.
 - For each: `decideOrSafeStop()` (`agents/src/decide.ts`) must return `status: 'UNAVAILABLE'`, the safe-stop hook must fire exactly once, and no decision object may exist.
-- No key or network access is needed.
+- No key, funds or network access are needed. The direct cases use a throwaway, unfunded key.
 ## contracts — PickleEscrow unit tests
 
 ```

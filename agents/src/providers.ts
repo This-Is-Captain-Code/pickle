@@ -41,6 +41,7 @@ function required(name: string): string {
 export function buildProviders(): Providers {
   const worldLive = env('WORLD_MODE', 'mock') === 'live';
   const zerogLive = env('ZEROG_MODE', 'mock') === 'live';
+  const zerogMode = env('ZEROG_COMPUTE_MODE', 'direct') as 'router' | 'direct';
 
   return {
     verifier: worldLive
@@ -64,14 +65,18 @@ export function buildProviders(): Providers {
         }),
     engine: zerogLive
       ? new ZeroGDecisionEngine({
-          mode: env('ZEROG_COMPUTE_MODE', 'router') as 'router' | 'direct',
+          // direct = Galileo testnet broker SDK (text only today); router = mainnet Router (credits; also vision)
+          mode: zerogMode,
           routerBaseUrl: env('ZEROG_ROUTER_URL', 'https://router-api.0g.ai/v1'),
           routerApiKey: env('ZEROG_ROUTER_KEY'),
           rpcUrl: env('ZEROG_RPC_URL', 'https://evmrpc-testnet.0g.ai'),
-          privateKey: env('ZEROG_PRIVATE_KEY'),
-          providerAddress: env('ZEROG_PROVIDER_ADDRESS'),
-          model: env('ZEROG_MODEL', '0gm-1.0-35b-a3b'),
-          verifyTee: env('ZEROG_VERIFY_TEE', '1') === '1',
+          // compute pays from its own COMPUTE_WALLET (never the deployer, which other processes send from)
+          privateKey: env('COMPUTE_WALLET_PRIVATE_KEY'),
+          providerAddress: env('ZEROG_PROVIDER_ADDRESS') || undefined,
+          // router: model id; direct: optional override of the provider's on-chain model
+          model: zerogMode === 'direct' ? env('ZEROG_DIRECT_MODEL') : env('ZEROG_MODEL', '0gm-1.0-35b-a3b'),
+          // router: send verify_tee; direct: reject responses whose TEE signature fails
+          verifyTee: zerogMode === 'direct' ? env('ZEROG_DIRECT_REQUIRE_TEE') === '1' : env('ZEROG_VERIFY_TEE', '1') === '1',
         })
       : new MockDecisionEngine({ unreachable: env('ZEROG_UNREACHABLE') === '1' }),
     episodes: zerogLive

@@ -142,14 +142,46 @@ Proposed for smoke tests: text and vision both on **`0gm-1.0-35b-a3b`** (TEE-att
 - Rate-limit headers: `x-ratelimit-limit-requests: 30`, `x-ratelimit-remaining-requests`, `x-ratelimit-reset-requests`.
 - `0gm-1.0-35b-a3b` → `502 upstream_error` "fetch provider quote: Get https://compute-network-20.integratenetwork.work/v1/quote?legacy=false: EOF". The provider behind the Router is failing.
 
-**Direct / broker path** (0G-INF) — alternative if the testnet Router stays down
-- Package `@0gfoundation/0g-compute-ts-sdk` (latest `0.9.0`, NPM); Node ≥ 20.0.0 (0G-INF).
-- `createZGComputeNetworkBroker(wallet)` on RPC `https://evmrpc-testnet.0g.ai`.
-- Per call: `getServiceMetadata` → `getRequestHeaders` → `POST {endpoint}/chat/completions`. The `ZG-Res-Key` header is the request id; `broker.inference.processResponse(provider, chatID)` verifies it.
-- **Funding: ledger ≥ 3 0G, plus each provider sub-account locks ≥ 1 0G.** With a faucet of 0.1/day, this needs tokens from 0G mentors or Discord.
-- Rate limits: 30 req/min per user per provider, burst 5, 5 concurrent.
-- zerobot's `AIBroker` uses this path, with default model `qwen-2.5-7b-instruct` (ZB `sdk/src/ai/broker.ts`).
+**Direct / broker path** (0G-INF) — **our text-decision path on testnet** (decision 2026-11-06 17:50; zerobot uses the same path)
+- Package `@0gfoundation/0g-compute-ts-sdk` **0.9.0**, installed in `zerog/`; Node ≥ 20.0.0 (0G-INF, NPM `engines`). Peer dep `ethers` is pinned to 6.13.1 to match `agents/` (a second copy breaks the SDK's `Wallet` types).
+- **The SDK's ESM build is broken in 0.9.0:** `import` fails with "does not provide an export named 'C'". We load the CommonJS build via `createRequire` (`zerog/src/direct.ts`).
+- Contracts (SDK `CONTRACT_ADDRESSES.testnet`): LedgerManager `0xE70830508dAc0A97e6c087c75f402f9Be669E406`, InferenceServing `0xa79F4c8311FF93C06b8CfB403690cc987c93F91E`.
+- Read-only discovery: `createReadOnlyInferenceBroker(rpc)` → `listService(offset, limit, includeUnacknowledged)`. The contract caps `limit` at **50** (it reverts with `LimitTooLarge(100, 50)`).
+- Per call: `getServiceMetadata(provider)` returns `{endpoint: <url>/v1/proxy, model}` → `getRequestHeaders(provider)` (an `Authorization` header) → `POST {endpoint}/chat/completions`.
+  - Request id = the `ZG-Res-Key` response header, else the completion `id`.
+  - `processResponse(provider, chatID, usageJson)` checks the TEE signature (true/false/null) and caches fees (SDK typings).
+- **Funding — the docs, SDK and contract disagree:**
+  - 0G-INF says ledger ≥ 3 0G and each provider sub-account ≥ 1 0G.
+  - The **contract** constants are `MIN_ACCOUNT_BALANCE = 0.1 0G` and `MIN_TRANSFER_AMOUNT = 0.01 0G`, read on-chain 2026-11-06.
+  - The **SDK enforces 3 0G client-side** for ledger creation (`LedgerProcessor.MIN_LEDGER_BALANCE_OG = 3`), even though its comment says it "matches the MIN_ACCOUNT_BALANCE constant". It only *warns* on transfers below 1 0G.
+  - → **We need ≥ 3 0G for the ledger, plus a bit to move into the sub-account. Asked for 3.5 0G.**
+- **Auto-funding:** `getRequestHeaders()` on its own tries to move up to 2 0G from the ledger into the provider sub-account (`[Auto-funding] Failed to transfer 2.0000 0G…`, `inference/broker/base.js` `doTransfer`, `MIN_LOCKED_BALANCE = 1 0G`). That's ledger → sub-account, never from the wallet, but it does send transactions.
+- Rate limits (0G-INF): 30 req/min per user per provider, burst 5, 5 concurrent. The provider below is stricter.
+- zerobot's `AIBroker` uses this path, with default model `qwen-2.5-7b-instruct` (ZB `sdk/src/ai/broker.ts`). **That model is not registered on testnet today.**
 - CLI `@0gfoundation/0gpc` needs macOS/Linux and Node ≥ 22 (PC). It isn't usable on our Windows + Node 20.16 box, and we don't need it.
+
+**Testnet providers — live `listService()` + reachability from our machine, 2026-11-06 17:40 IST**
+
+Produced by `npx tsx zerog/scripts/list-testnet-services.ts`, which is read-only (no wallet).
+
+| Model | Type | Provider | Endpoint | Verifiability | Reachable | Images |
+|---|---|---|---|---|---|---|
+| `qwen/qwen3.8-omni-flash` | chatbot | `0xd6269e257761705B9e442E59794703762DFcC940` | compute-network-6.integratenetwork.work | TeeML, TEE signer acknowledged | ✅ `/v1/models`, `/v1/quote` → 200 | ❌ `input_modalities: ["text"]` |
+| `glm-5.3` | chatbot | `0x1cB95Eb66Cc67C62d4DE0CC96726C5A5d82e7C85` | compute-network-rdv2-b300.integratenetwork.work | TeeML, acknowledged | ❌ ECONNRESET | — |
+| `Qwen2.5-0.5B-Instruct` | chatbot | `0x87a13337…8ed4`, `0xA02b95Aa…1A09` | `…-3081/-3083.dstack-pha-in2.phala.network` | — | ❌ ECONNRESET | — |
+| `openai/gpt-oss-20b` | chatbot | `0x8e60d466…0049` | compute-network-7.integratenetwork.work | TeeML | ❌ ENOTFOUND (stale since 2025-12) | — |
+| `google/gemma-3-27b-it` | chatbot | `0x69Eb5a0B…aE08` | compute-network-8.integratenetwork.work | TeeML | ❌ ENOTFOUND (stale since 2025-12) | — |
+| `openai/whisper-large-v3` | speech-to-text | `0xC93C82C2…3Cc4` | compute-network-dev-101.integratenetwork.work | TeeML | ❌ ECONNRESET | — |
+| `z-image-turbo` | text-to-image | `0x1cE3f41A…e6dF` | compute-network-dev-100.integratenetwork.work | TeeML | ❌ ECONNRESET | — |
+
+Details for `qwen/qwen3.8-omni-flash` (from the provider's `/v1/models`):
+- "Served here as a text chatbot via DashScope (**streaming only**)".
+- Rate limits: `requests_per_minute: 10`, `tokens_per_minute: 2000`.
+- `provider_type: centralized` (aliyun), `tee_type: TDX`.
+- Price: prompt 1.18e12 / completion 4.72e12 neuron per token.
+- → **No image-capable model on testnet.** Text decisions use testnet; vision stays on the mainnet Router.
+
+Some `integratenetwork.work` hosts are reachable from here, so this is **not** a blanket network block. The resets look provider-side, though a per-host block can't be ruled out.
 
 ## 3. 0G Storage
 
