@@ -65,10 +65,9 @@ const qrot = (q, v) => {
   return add(add(scale(u, 2 * dot(u, v)), scale(v, w * w - dot(u, u))), scale(cross(u, v), 2 * w));
 };
 
-// ---------- per-hand state: calibration origin, filters, pinch edge ----------
+// ---------- per-hand state: calibration origin, filters ----------
 const CALIB_FRAMES = 25;      // ~0.5 s of frames to lock the rest-pose origin
 const LOST_RESET_MS = 1200;   // hand gone this long -> recalibrate on return
-const PINCH_ON = 0.028, PINCH_OFF = 0.045; // m, hysteresis on thumb-tip↔index-tip
 
 function makeHand(side) {
   return {
@@ -79,7 +78,6 @@ function makeHand(side) {
 }
 const hands = { left: makeHand('left'), right: makeHand('right') };
 let head = null; // latest {pos, rot} from the sender (newer senders only)
-let holding = false, lastPinchActionAt = 0;
 let parked = false;
 // "Ready" park pose: hands hovering over the table (matches the sim's
 // REST_POSE); sent once when tracking is lost so the robot never freezes
@@ -139,17 +137,8 @@ function updateHand(h, data, t) {
   while (h.trail.length && Date.now() - h.trail[0].at > 350) h.trail.shift();
   const first = h.trail[0]?.p ?? h.offset;
   h.still = norm(sub(h.offset, first)) < 0.005;
-  // pinch gesture with hysteresis; a right-hand pinch toggles pick/drop
-  const thumb = data.joints[5]?.pos, index = data.joints[10]?.pos;
-  if (thumb && index) {
-    const d = Math.hypot(thumb[0] - index[0], thumb[1] - index[1], thumb[2] - index[2]);
-    const was = h.pinched;
-    h.pinched = was ? d < PINCH_OFF : d < PINCH_ON;
-    if (!was && h.pinched && h.side === 'right' && Date.now() - lastPinchActionAt > 600) {
-      lastPinchActionAt = Date.now();
-      sendAction(holding ? 'drop' : 'pick');
-    }
-  }
+  // No gestures: this bridge does one thing — smooth arm control. Fingers are
+  // ignored entirely (the palm centroid anchor doesn't even see them move).
 }
 
 // ---------- arm IK (anchored deltas -> shoulder/elbow angles) ----------
@@ -239,7 +228,6 @@ function connectSim() {
     } else if (m.t === 'robot' || m.t === 'state') {
       const prev = robotMode;
       robotMode = m.robot.mode;
-      holding = !!m.robot.holding;
       if (prev !== robotMode) {
         log('sim', `robot mode: ${prev} -> ${robotMode}`);
         if (robotMode === 'stuck' && AUTO_BEGIN) beginTeleop();
@@ -254,12 +242,6 @@ async function beginTeleop() {
     const res = await fetch(`${SIM_URL}/api/teleop/begin`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: process.env.SIM_TELEOP_TOKEN || 'dev-token' }) });
     log('sim', res.ok ? 'teleop session started (auto)' : `begin failed: ${(await res.json()).error}`);
   } catch (e) { log('sim', `begin failed: ${e.message}`); }
-}
-
-function sendAction(id) {
-  if (simWs?.readyState !== WebSocket.OPEN) return;
-  simWs.send(JSON.stringify({ t: 'action', id }));
-  log('gesture', `pinch -> ${id}`);
 }
 
 // 30 Hz ctrl sender with a deadband: only send when a target moved > 5 mrad.
