@@ -15,11 +15,11 @@ thesis: when a robot hits its limits, it needs exactly one of three kinds of
 
 **1. Physical intervention — buying hands.** (human → robot)
 Some failures cannot be solved remotely, by definition: the robot is powerless,
-immobilized, or the fix lies outside its own actuation. A human must be *present*.
-*Demo:* a SenseCAP Watcher loses power. Dying on battery, its screen becomes the
+immobilized, or the fix lies outside its own actuation. A human must be _present_.
+_Demo:_ a SenseCAP Watcher loses power. Dying on battery, its screen becomes the
 job poster — a red `*-*` face, a QR code, **SCAN TO SAVE ME**. A passerby scans,
 proves they're a unique human with **World ID** in World App, and plugs it in.
-Power returning *is* the proof — verified electrically, judged by **0G Compute**,
+Power returning _is_ the proof — verified electrically, judged by **0G Compute**,
 and the escrow pays out on 0G Galileo. 2 min 11 s from unplug to payout:
 [postBounty](https://chainscan-galileo.0g.ai/tx/0xac7f56123b4644fb7f9736033afcf086591f2e93df011c8281d1a54b4148be85) →
 [claim](https://chainscan-galileo.0g.ai/tx/0x29c4fa604e553650bf298ff259ab10e66eb71beeb0ebefbca54a5bbd47588ccb) →
@@ -29,7 +29,7 @@ and the escrow pays out on 0G Galileo. 2 min 11 s from unplug to payout:
 Sometimes the robot's body is capable but its skill or judgment isn't. Nobody needs
 to be on-site; a human pilots it through the gap — and every session doubles as a
 demonstration the robot can train on.
-*Demo:* a Unitree G1 (MuJoCo, running in Node) has a box on its table it has no
+_Demo:_ a Unitree G1 (MuJoCo, running in Node) has a box on its table it has no
 policy for. Its agent posts a teleop bounty; a World-verified human takes the arms
 through **Snap Spectacles hand-tracking** (WebXR → Cloudflare relay → sim) and
 sweeps the box off. The box hitting the floor is the proof.
@@ -40,7 +40,7 @@ sweeps the box off. The box hitting the floor is the proof.
 **3. Machine intervention — buying services from peers.** (robot → robot)
 When the help a robot needs is something another machine already has — power, a
 tool, queue priority — no human belongs in the loop. The robots transact directly.
-*Demo:* the same dying Watcher offers its job to a second robot (a LilyGO T-Deck)
+_Demo:_ the same dying Watcher offers its job to a second robot (a LilyGO T-Deck)
 instead of a human. The T-Deck's **own agent** decides on 0G Compute — with its real
 battery voltage in the prompt — accepts, and claims the bounty **with its own wallet
 as the worker; no World ID, because the worker is a machine**. Power is delivered,
@@ -79,17 +79,17 @@ escrow pays the worker, citing the compute request id + the storage root on-chai
 
 ## Repo map
 
-| Package | What |
-|---|---|
-| `agents/` | The orchestrator (`src/service.ts`): MQTT devices, sim webhook, claims relay, World verify, 0G decide/verify, escrow queue. Tools: `sim-e2e`, `fake-watcher`, `escrow-status --reclaim`, `fund-robot`, `settle-now` |
-| `contracts/hardhat/` | `PickleEscrow.sol` + 31 tests; deployed + verified on Galileo |
-| `world/` | IDKit 4 `HumanVerifier` (per-bounty actions, backend RP signing, v4 verify) |
-| `zerog/` | `DecisionEngine` on the 0G Router (TEE) · `EpisodeLogger` on 0G Storage |
-| `sim/` | Node MuJoCo Unitree G1 (29 DOF) + three.js viewer; always-teleop; announces its standing job |
-| `teleop/` | Spectacles WebXR sender, Cloudflare relay worker (also serves `/go` and the claim page), joint-mapping bridge |
-| `firmware/` | SenseCAP Watcher (ESP-IDF): QR poster, `*-*` dying face, VBUS proof, knob demo toggle |
-| `site/` | Next.js landing: the three interventions + the job portal |
-| `shared/` | The interface contract (`HumanVerifier`, `DecisionEngine`, `EpisodeLogger`, `Bounty`) + `addresses.json` |
+| Package              | What                                                                                                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agents/`            | The orchestrator (`src/service.ts`): MQTT devices, sim webhook, claims relay, World verify, 0G decide/verify, escrow queue. Tools: `sim-e2e`, `fake-watcher`, `escrow-status --reclaim`, `fund-robot`, `settle-now` |
+| `contracts/hardhat/` | `PickleEscrow.sol` + 31 tests; deployed + verified on Galileo                                                                                                                                                       |
+| `world/`             | IDKit 4 `HumanVerifier` (per-bounty actions, backend RP signing, v4 verify)                                                                                                                                         |
+| `zerog/`             | `DecisionEngine` on the 0G Router (TEE) · `EpisodeLogger` on 0G Storage                                                                                                                                             |
+| `sim/`               | Node MuJoCo Unitree G1 (29 DOF) + three.js viewer; always-teleop; announces its standing job                                                                                                                        |
+| `teleop/`            | Spectacles WebXR sender, Cloudflare relay worker (also serves `/go` and the claim page), joint-mapping bridge                                                                                                       |
+| `firmware/`          | SenseCAP Watcher (ESP-IDF): QR poster, `*-*` dying face, VBUS proof, knob demo toggle                                                                                                                               |
+| `site/`              | Next.js landing: the three interventions + the job portal                                                                                                                                                           |
+| `shared/`            | The interface contract (`HumanVerifier`, `DecisionEngine`, `EpisodeLogger`, `Bounty`) + `addresses.json`                                                                                                            |
 
 ## Run it
 
@@ -119,9 +119,6 @@ Before a demo: `scripts/escrow-status.ts --reclaim` then `scripts/deploy-escrow.
 ## Team
 
 Captain Code (sim, teleop, firmware, orchestrator, site) · Gopika (World ID, 0G, escrow contract, chain tooling).
-Built at Monad Blitz Delhi, Nov 2026. Teleop borrows from
-[pinch](https://github.com/This-Is-Captain-Code/pinch) and the G1 sim from
-[ethtokyo](https://github.com/Pranav9931/ethtokyo).
 
 Machines have been hired by humans for a century. Pickle is the first market that
 runs the other way.
