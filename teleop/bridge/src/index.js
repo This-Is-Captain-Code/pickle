@@ -225,6 +225,7 @@ function connectSim() {
         if (robotMode === 'stuck' && AUTO_BEGIN) beginTeleop();
       }
     } else if (m.t === 'denied') log('sim', `denied: ${m.msg}`);
+    else if (m.t === 'toast' && m.level === 'error') log('sim', `rejected: ${m.msg}`);
   });
 }
 

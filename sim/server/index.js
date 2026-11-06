@@ -110,7 +110,7 @@ wss.on('connection', (ws, req) => {
     if (!ws.canControl) return ws.send(JSON.stringify({ t: 'denied', msg: 'control locked: connect with ?token=' }));
     if (m.t === 'ctrl') sim.setTeleop(m.targets || []);
     else if (m.t === 'drag') sim.setDrag(m.body == null ? null : Number(m.body), Array.isArray(m.target) ? m.target : [0, 0, 0]);
-    else if (m.t === 'action') { const err = sim.humanAction(String(m.id || '')); if (err) ws.send(JSON.stringify({ t: 'toast', level: 'error', msg: err })); }
+    else if (m.t === 'action') { const err = sim.humanAction(String(m.id || '')); if (err) broadcast({ t: 'toast', level: 'error', msg: err }); }
   });
 });
 
