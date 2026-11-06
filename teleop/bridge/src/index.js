@@ -42,6 +42,23 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // clamp+scale an input range onto a joint range (pinch's mapAxis, in radians)
 const mapAxis = (v, inMin, inMax, outMin, outMax) => outMin + (outMax - outMin) * clamp((v - inMin) / (inMax - inMin), 0, 1);
 
+// ---------- tiny vec3 ----------
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const scale = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm = (a) => Math.hypot(a[0], a[1], a[2]);
+const unit = (a) => { const n = norm(a) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
+// rotate v around unit axis k by angle t (Rodrigues)
+const rotAxis = (v, k, t) => add(add(scale(v, Math.cos(t)), scale(cross(k, v), Math.sin(t))), scale(k, dot(k, v) * (1 - Math.cos(t))));
+// quaternion [x,y,z,w] applied to v
+const qrot = (q, v) => {
+  const [x, y, z, w] = q;
+  const u = [x, y, z];
+  return add(add(scale(u, 2 * dot(u, v)), scale(v, w * w - dot(u, u))), scale(cross(u, v), 2 * w));
+};
+
 // ---------- per-hand state: calibration origin, filters, pinch edge ----------
 const CALIB_FRAMES = 25;      // ~0.5 s of frames to lock the rest-pose origin
 const LOST_RESET_MS = 1200;   // hand gone this long -> recalibrate on return
@@ -51,10 +68,11 @@ function makeHand(side) {
   return {
     side, origin: null, calib: [], lastSeen: 0,
     fx: new OneEuro(), fy: new OneEuro(), fz: new OneEuro(),
-    pinched: false, offset: null,
+    pinched: false, offset: null, abs: null,
   };
 }
 const hands = { left: makeHand('left'), right: makeHand('right') };
+let head = null; // latest {pos, rot} from the sender (newer senders only)
 let holding = false, lastPinchActionAt = 0;
 
 function updateHand(h, data, t) {
@@ -77,6 +95,7 @@ function updateHand(h, data, t) {
     h.fy.filter(wrist[1] - h.origin[1], t),
     h.fz.filter(wrist[2] - h.origin[2], t),
   ];
+  h.abs = add(h.origin, h.offset); // filtered absolute wrist (XR space), for IK
   // pinch gesture with hysteresis; a right-hand pinch toggles pick/drop
   const thumb = data.joints[5]?.pos, index = data.joints[10]?.pos;
   if (thumb && index) {
@@ -90,7 +109,53 @@ function updateHand(h, data, t) {
   }
 }
 
-// ---------- hand offsets (m, XR frame) -> G1 joint targets (rad) ----------
+// ---------- arm IK (head + wrist -> shoulder/elbow angles) ----------
+// WebXR has no elbow/shoulder joints, so we reconstruct them VR-avatar style:
+// estimate the shoulder from the head pose, aim the two-link arm at the wrist,
+// elbow bend from distance, natural-elbow-down plane. BRIDGE_IK=0 disables.
+const USE_IK = process.env.BRIDGE_IK !== '0';
+const ARM_U = 0.22, ARM_F = 0.26; // G1 upper arm / forearm (m)
+const ARM_SCALE = +(process.env.ARM_SCALE || 0.8); // human reach -> robot reach
+
+function armTargetsIK(h) {
+  if (!h.abs || !head) return null;
+  const up = [0, 1, 0];
+  let fwd = qrot(head.rot, [0, 0, -1]);
+  fwd = unit([fwd[0], 0, fwd[2]]); // flatten to horizontal
+  if (!Number.isFinite(fwd[0]) || norm(fwd) < 0.5) fwd = [0, 0, -1];
+  const right = unit(cross(fwd, up));
+  const sideSign = h.side === 'right' ? 1 : -1;
+  // shoulder ≈ head, dropped and shifted laterally
+  const shoulder = add(add(add(head.pos, scale(up, -0.22)), scale(right, 0.17 * sideSign)), scale(fwd, -0.03));
+  const v = sub(h.abs, shoulder);
+  // torso-aligned components -> robot frame (x fwd, y left, z up)
+  const d = [dot(v, fwd), -dot(v, right), dot(v, up)];
+  const L = clamp(norm(d) * ARM_SCALE, 0.08, ARM_U + ARM_F - 0.01);
+  const dir = unit(d);
+
+  // two-link: upper arm tilts off the shoulder->wrist line by alpha, elbow below
+  const alpha = Math.acos(clamp((ARM_U * ARM_U + L * L - ARM_F * ARM_F) / (2 * ARM_U * L), -1, 1));
+  const interior = Math.acos(clamp((ARM_U * ARM_U + ARM_F * ARM_F - L * L) / (2 * ARM_U * ARM_F), -1, 1));
+  let bendAxis = cross(dir, [0, 0, 1]); // horizontal normal of the vertical plane through dir
+  if (norm(bendAxis) < 0.1) bendAxis = cross(dir, [1, 0, 0]);
+  bendAxis = unit(bendAxis);
+  const uDir = rotAxis(dir, bendAxis, -alpha); // elbow drops below the line
+  // Upper-arm direction (pitch about y, then roll about x, zero = hanging):
+  //   uDir = (-sin(p)cos(r), sin(r), -cos(p)cos(r))  [robot frame: x fwd, y left, z up]
+  const roll = Math.asin(clamp(uDir[1], -1, 1));
+  const pitch = Math.atan2(-uDir[0], -uDir[2]);
+  const elbow = clamp(Math.PI - interior, -0.2, 2.05);
+
+  const p = `${h.side}_`;
+  const out = {};
+  out[p + 'shoulder_pitch'] = clamp(pitch, -2.9, 2.5);
+  out[p + 'shoulder_roll'] = clamp(roll, -2.2, 2.2);
+  out[p + 'elbow'] = elbow;
+  out._reach = d[0];
+  return out;
+}
+
+// ---------- legacy mapping (no head pose): hand offsets -> joint targets ----
 // Arms + a forward waist lean on deep reaches (the G1's arms alone max out at
 // ~0.45 m from the waist axis; leaning buys the extra reach a human expects).
 // Legs/wrists stay at their current targets (nulls). Reach forward = -z in XR.
@@ -156,7 +221,7 @@ setInterval(() => {
   const targets = new Array(nu).fill(null);
   let maxReach = null;
   for (const h of [hands.left, hands.right]) {
-    const t = armTargets(h);
+    const t = USE_IK && head ? armTargetsIK(h) : armTargets(h);
     if (!t) continue;
     maxReach = maxReach == null ? t._reach : Math.max(maxReach, t._reach);
     delete t._reach;
@@ -175,6 +240,7 @@ setInterval(() => {
 // ---------- frame source: relay, or synthetic hands for desk testing ----------
 function onFrame(frame) {
   const t = frame.ts ?? performance.now();
+  if (frame.head?.pos && frame.head?.rot) head = frame.head;
   updateHand(hands.left, frame.left, t);
   updateHand(hands.right, frame.right, t);
 }
@@ -221,6 +287,7 @@ function runFake() {
     const pinching = settled && s % 4 < 0.8;
     onFrame({
       ts: t,
+      head: { pos: [0, 1.55, 0], rot: [0, 0, 0, 1] }, // exercises the IK path
       right: { joints: mkJoints([0.2, 1.0 + dy, -0.3 + dz], pinching ? 0.01 : 0.09), n: 3 },
       left: { joints: mkJoints([-0.2, 1.0 + (settled ? 0.15 * Math.sin(s * 0.9 + 1) : 0), -0.3], 0.09), n: 3 },
     });
@@ -229,4 +296,4 @@ function runFake() {
 
 connectSim();
 if (FAKE) runFake(); else connectRelay();
-log('bridge', `mode=${FAKE ? 'fake' : 'relay'} rate=${RATE_HZ}Hz autoBegin=${AUTO_BEGIN}`);
+log('bridge', `mode=${FAKE ? 'fake' : 'relay'} rate=${RATE_HZ}Hz autoBegin=${AUTO_BEGIN} ik=${USE_IK ? 'on (needs head pose from sender)' : 'off'}`);

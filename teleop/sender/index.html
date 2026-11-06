@@ -328,6 +328,15 @@ renderer.setAnimationLoop((t, xrFrame) => {
       if (l) data.left  = l;
       if (r) data.right = r;
 
+      // Head pose (same reference space as the hands): lets the receiver
+      // reconstruct shoulders and run proper arm IK. NB: `r` is shadowed by
+      // the right-hand data in this scope, so round inline.
+      const cam = renderer.xr.getCamera();
+      data.head = {
+        pos: [+cam.position.x.toFixed(4), +cam.position.y.toFixed(4), +cam.position.z.toFixed(4)],
+        rot: [+cam.quaternion.x.toFixed(4), +cam.quaternion.y.toFixed(4), +cam.quaternion.z.toFixed(4), +cam.quaternion.w.toFixed(4)],
+      };
+
       sendWS(data);
 
       if (dataPanelOpen) document.getElementById('data-out').textContent = JSON.stringify(data, null, 2);
