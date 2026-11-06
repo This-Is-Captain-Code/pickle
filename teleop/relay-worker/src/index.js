@@ -84,7 +84,7 @@ export class Room {
     // ── REST snapshot  GET /default ───────────────────────────────────────
     const body = this.latest
       ? JSON.stringify(this.latest, null, 2)
-      : JSON.stringify({ status: 'no data yet', hint: 'Open pinch-beige.vercel.app on Spectacles first.' });
+      : JSON.stringify({ status: 'no data yet', hint: 'Open https://pickle-hand-relay.pickle-delhi.workers.dev on Spectacles and start AR first.' });
 
     return new Response(body, {
       headers: { ...CORS, 'Content-Type': 'application/json' },
@@ -94,8 +94,11 @@ export class Room {
 
 export default {
   async fetch(request, env) {
-    const url    = new URL(request.url);
-    const parts  = url.pathname.replace(/^\/+/, '').split('/');
+    const url   = new URL(request.url);
+    const parts = url.pathname.replace(/^\/+/, '').split('/');
+    // "/" (and any static asset) is the Spectacles sender page; everything
+    // else is a relay room: wss://<host>/<room>, GET /<room>, /<room>/stream.
+    if (!parts[0] && request.headers.get('Upgrade') !== 'websocket') return env.ASSETS.fetch(request);
     const roomId = parts[0] || 'default';
     const id     = env.ROOMS.idFromName(roomId);
     return env.ROOMS.get(id).fetch(request);

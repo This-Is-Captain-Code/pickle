@@ -77,7 +77,13 @@ body { background: #000; overflow: hidden; font-family: monospace; }
      Record sessions and download as JSON or CSV.</p>
 
   <div id="ws-row">
-    <input id="ws-url" type="text" value="wss://hand-tracking-relay.jenil-panchal10.workers.dev/pickle" />
+    <input id="ws-url" type="text" value="" />
+  <script>
+    // Served from the relay worker itself -> stream to this same host, room "pickle".
+    document.getElementById('ws-url').value = location.protocol === 'https:'
+      ? `wss://${location.host}/pickle`
+      : 'wss://pickle-hand-relay.pickle-delhi.workers.dev/pickle';
+  </script>
   </div>
 
   <button id="btn-start">TAP TO START AR</button>

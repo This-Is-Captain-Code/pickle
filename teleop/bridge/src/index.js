@@ -14,7 +14,7 @@ import WebSocket from 'ws';
 
 const SIM_URL = process.env.SIM_URL || 'http://localhost:8787';
 const SIM_WS = SIM_URL.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(process.env.SIM_TELEOP_TOKEN || 'dev-token');
-const RELAY_WS_URL = process.env.RELAY_WS_URL || 'wss://hand-tracking-relay.jenil-panchal10.workers.dev/pickle';
+const RELAY_WS_URL = process.env.RELAY_WS_URL || 'wss://pickle-hand-relay.pickle-delhi.workers.dev/pickle';
 const RATE_HZ = +(process.env.RATE_HZ || 30);
 const AUTO_BEGIN = process.env.BRIDGE_AUTO_BEGIN === '1'; // dev: begin teleop as soon as the robot is stuck
 const FAKE = process.argv.includes('--fake');
