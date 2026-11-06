@@ -22,9 +22,12 @@ const WEBHOOK = process.env.AGENTS_WEBHOOK_URL || ''; // e.g. http://localhost:8
 // staged at boot when running the bounty story: SIM_SCENARIO=knock|obstacle|person.
 const SIM_MODE = (process.env.SIM_MODE ?? 'teleop').toLowerCase();
 const AUTO_SCENARIO = (process.env.SIM_SCENARIO ?? 'none').toLowerCase();
-// Where the box is staged for always-teleop sessions: closer than the feeder
-// mark and angled toward the right arm, well inside comfortable wrist reach.
-const BOX_SPOT = (process.env.SIM_BOX ?? '0.33,-0.12,0.89').split(',').map(Number);
+// Where the box is staged for always-teleop sessions: on the bench to the
+// robot's left of the feeder pedestal — ~0.36 m radius and 9 cm lower than
+// the feeder mark (closer AND easier height). The right side is unusable:
+// pedestal walls (y ±0.11, x ≥ 0.32) eject overlapping spawns and the
+// conveyor captures anything at y ≤ -0.15.
+const BOX_SPOT = (process.env.SIM_BOX ?? '0.31,0.18,0.80').split(',').map(Number);
 
 const sim = await Sim.create();
 const app = express();
