@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pickle Sim</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { overflow: hidden; font-family: ui-monospace, Consolas, monospace; background: #f3f4f5; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 10px; left: 10px; z-index: 10; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: rgba(20,22,26,0.85); color: #9aa3ad; border: 1px solid rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 16px; font-size: 12px; }
+  .chip.ok { color: #3fd68f; } .chip.warn { color: #ffb020; } .chip.err { color: #ff6b6b; }
+  button { background: rgba(20,22,26,0.85); color: #cfd6dd; border: 1px solid rgba(255,255,255,0.18); padding: 5px 12px; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:hover { background: rgba(40,44,52,0.95); color: #fff; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #stuck { background: rgba(20,22,26,0.92); color: #e8edf2; border: 1px solid rgba(255,176,32,0.5); border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.5; display: none; }
+  #stuck b { color: #ffb020; }
+  #toasts { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .toast { background: rgba(20,22,26,0.92); color: #e8edf2; padding: 7px 14px; border-radius: 8px; font-size: 12px; border: 1px solid rgba(255,255,255,0.15); }
+  .toast.ok { border-color: rgba(63,214,143,0.5); } .toast.warn { border-color: rgba(255,176,32,0.5); } .toast.error { border-color: rgba(255,107,107,0.5); }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="row">
+    <span class="chip" id="s-ws">ws: …</span>
+    <span class="chip" id="s-mode">mode: …</span>
+    <span class="chip" id="s-time">t: …</span>
+    <span class="chip" id="s-held">hands: free</span>
+    <span class="chip" id="s-done">shipped: 0</span>
+  </div>
+  <div class="row">
+    <button data-scenario="obstacle">💥 drop rail</button>
+    <button data-scenario="person">🚶 person enters</button>
+    <button data-scenario="knock">📦 knock box</button>
+    <button data-scenario="reset">↺ reset</button>
+    <button id="b-teleop" disabled>🕹 begin teleop</button>
+    <button id="b-done" disabled>✅ work done</button>
+  </div>
+  <div id="stuck"></div>
+</div>
+<div id="toasts"></div>
+<script type="module" src="/main.js"></script>
+</body>
+</html>

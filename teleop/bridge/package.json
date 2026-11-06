@@ -1,0 +1,13 @@
+{
+  "name": "@pickle/teleop-bridge",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "fake": "node src/index.js --fake"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}

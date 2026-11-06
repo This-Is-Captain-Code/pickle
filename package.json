@@ -9,7 +9,9 @@
     "shared",
     "world",
     "zerog",
-    "agents"
+    "agents",
+    "sim",
+    "teleop/bridge"
   ],
   "scripts": {
     "dev": "npm run dev -w agents",

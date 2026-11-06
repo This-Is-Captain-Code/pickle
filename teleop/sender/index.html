@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hand Tracking — Spectacles WebXR</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #000; overflow: hidden; font-family: monospace; }
+
+/* ---- Start screen ---- */
+#start-screen {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; background: rgba(0,0,0,0.92); padding: 24px;
+}
+#start-screen h1 { color: #fff; font-size: 22px; font-weight: 600; text-align: center; }
+#start-screen p  { color: rgba(255,255,255,0.5); font-size: 13px; text-align: center; line-height: 1.6; max-width: 340px; }
+
+#ws-row { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+#ws-url {
+  flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25);
+  color: #fff; padding: 9px 12px; border-radius: 8px; font-family: monospace; font-size: 12px;
+}
+#ws-url::placeholder { color: rgba(255,255,255,0.3); }
+
+#btn-start {
+  width: 100%; max-width: 420px; padding: 14px; border-radius: 10px;
+  background: rgba(0,200,120,0.25); border: 1px solid rgba(0,200,120,0.6);
+  color: #0d8; font-size: 16px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+  transition: background 0.2s;
+}
+#btn-start:hover { background: rgba(0,200,120,0.4); }
+
+/* ---- HUD (shown during XR) ---- */
+#hud { position: fixed; top: 0; left: 0; width: 100%; z-index: 50; display: none; padding: 10px; }
+
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.chip {
+  background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.15);
+  color: #888; padding: 3px 10px; border-radius: 20px; font-size: 11px; white-space: nowrap;
+}
+.chip.on  { color: #0f9; border-color: rgba(0,255,150,0.4); }
+.chip.warn{ color: #fa0; border-color: rgba(255,160,0,0.4); }
+.chip.rec { color: #f44; border-color: rgba(255,60,60,0.5); animation: blink 1s step-end infinite; }
+
+@keyframes blink { 50% { opacity: 0.4; } }
+
+#btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.btn {
+  background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2);
+  color: #ccc; padding: 5px 12px; border-radius: 6px; font-size: 11px;
+  cursor: pointer; transition: background 0.15s;
+}
+.btn:hover   { background: rgba(255,255,255,0.15); color: #fff; }
+.btn:disabled{ opacity: 0.35; cursor: not-allowed; }
+.btn.active  { color: #0f9; border-color: rgba(0,255,150,0.5); }
+.btn.danger  { color: #f66; border-color: rgba(255,60,60,0.5); }
+
+/* ---- Data panel ---- */
+#data-panel {
+  position: fixed; bottom: 0; left: 0; right: 0; max-height: 220px;
+  background: rgba(0,0,0,0.88); border-top: 1px solid rgba(255,255,255,0.1);
+  overflow: auto; font-size: 10px; color: #6e6; padding: 10px 12px;
+  display: none; z-index: 40; line-height: 1.5;
+}
+#data-panel pre { white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+
+<!-- Start screen -->
+<div id="start-screen">
+  <h1>WebXR Hand Tracking</h1>
+  <p>Tracks all 26 hand joints in real time.<br>
+     Works in the Snap Spectacles browser.<br>
+     Record sessions and download as JSON or CSV.</p>
+
+  <div id="ws-row">
+    <input id="ws-url" type="text" value="wss://hand-tracking-relay.jenil-panchal10.workers.dev/pickle" />
+  </div>
+
+  <button id="btn-start">TAP TO START AR</button>
+  <p style="font-size:11px">Requires HTTPS + Spectacles browser for WebXR</p>
+</div>
+
+<!-- HUD (visible during AR session) -->
+<div id="hud">
+  <div class="chip-row">
+    <span class="chip" id="c-ws">WS: off</span>
+    <span class="chip" id="c-left">L: --</span>
+    <span class="chip" id="c-right">R: --</span>
+    <span class="chip" id="c-fps">FPS: --</span>
+  </div>
+  <div id="btn-row">
+    <button class="btn" id="btn-data">Data Panel</button>
+  </div>
+</div>
+
+<!-- Live data panel -->
+<div id="data-panel">
+  <pre id="data-out">Waiting for hand data…</pre>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+// ----------------------------------------------------------------
+//  Renderer
+// ----------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({
+  antialias: false, stencil: false, depth: true, alpha: true,
+  powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+Object.assign(renderer.domElement.style, { position:'fixed', top:0, left:0, zIndex:1 });
+document.body.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 50);
+camera.position.set(0, 1.6, 3);
+scene.add(camera, new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ----------------------------------------------------------------
+//  Joint definitions
+// ----------------------------------------------------------------
+const JOINT_NAMES = [
+  'wrist',
+  'thumb-metacarpal','thumb-phalanx-proximal','thumb-phalanx-intermediate','thumb-phalanx-distal','thumb-tip',
+  'index-finger-metacarpal','index-finger-phalanx-proximal','index-finger-phalanx-intermediate','index-finger-phalanx-distal','index-finger-tip',
+  'middle-finger-metacarpal','middle-finger-phalanx-proximal','middle-finger-phalanx-intermediate','middle-finger-phalanx-distal','middle-finger-tip',
+  'ring-finger-metacarpal','ring-finger-phalanx-proximal','ring-finger-phalanx-intermediate','ring-finger-phalanx-distal','ring-finger-tip',
+  'pinky-finger-metacarpal','pinky-finger-phalanx-proximal','pinky-finger-phalanx-intermediate','pinky-finger-phalanx-distal','pinky-finger-tip',
+];
+// wrist=0, thumb=1-5, index=6-10, middle=11-15, ring=16-20, pinky=21-25
+const FINGER_CHAINS = [
+  [0,1,2,3,4,5],
+  [0,6,7,8,9,10],
+  [0,11,12,13,14,15],
+  [0,16,17,18,19,20],
+  [0,21,22,23,24,25],
+];
+
+// ----------------------------------------------------------------
+//  Hand visualization (dots + skeleton lines)
+// ----------------------------------------------------------------
+function makeHandViz(color) {
+  const dotGeo = new THREE.SphereGeometry(0.005, 6, 4);
+  const dotMat = new THREE.MeshBasicMaterial({ color });
+  const dots = JOINT_NAMES.map(() => {
+    const m = new THREE.Mesh(dotGeo, dotMat);
+    m.visible = false;
+    scene.add(m);
+    return m;
+  });
+
+  const lineMat = new THREE.LineBasicMaterial({ color });
+  const lineObjs = FINGER_CHAINS.map(chain => {
+    const pts = chain.map(() => new THREE.Vector3());
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo, lineMat);
+    line.visible = false;
+    scene.add(line);
+    return { line, chain };
+  });
+
+  return { dots, lineObjs };
+}
+
+const viz = [makeHandViz(0x00ff88), makeHandViz(0x44aaff)];
+
+function updateViz(hand, v) {
+  if (!hand?.joints) {
+    v.dots.forEach(d => d.visible = false);
+    v.lineObjs.forEach(o => o.line.visible = false);
+    return;
+  }
+  const pos = JOINT_NAMES.map(name => {
+    const j = hand.joints[name];
+    if (j?.position) { v.dots[JOINT_NAMES.indexOf(name)].position.copy(j.position); return j.position; }
+    return null;
+  });
+  JOINT_NAMES.forEach((_, i) => { v.dots[i].visible = !!pos[i]; });
+
+  v.lineObjs.forEach(({ line, chain }) => {
+    const pts = chain.map(i => pos[i]).filter(Boolean);
+    if (pts.length < 2) { line.visible = false; return; }
+    line.geometry.setFromPoints(chain.map(i => pos[i] ?? new THREE.Vector3()));
+    line.geometry.attributes.position.needsUpdate = true;
+    line.visible = true;
+  });
+}
+
+// ----------------------------------------------------------------
+//  WebXR hands
+// ----------------------------------------------------------------
+const hand0 = renderer.xr.getHand(0); scene.add(hand0);
+const hand1 = renderer.xr.getHand(1); scene.add(hand1);
+
+// ----------------------------------------------------------------
+//  Data extraction
+// ----------------------------------------------------------------
+function getHandData(hand) {
+  if (!hand?.joints) return null;
+  const joints = [];
+  let n = 0;
+  for (const name of JOINT_NAMES) {
+    const j = hand.joints[name];
+    if (j?.position) {
+      const entry = { pos: [r(j.position.x), r(j.position.y), r(j.position.z)] };
+      if (j.quaternion) entry.rot = [r(j.quaternion.x), r(j.quaternion.y), r(j.quaternion.z), r(j.quaternion.w)];
+      joints.push(entry); n++;
+    } else joints.push(null);
+  }
+  return n > 0 ? { joints, n } : null;
+}
+const r = v => +v.toFixed(5);
+
+// ----------------------------------------------------------------
+//  WebSocket (optional)
+// ----------------------------------------------------------------
+let ws = null, wsUrl = '';
+function connectWS(url) {
+  wsUrl = url;
+  if (!url) return;
+  try {
+    ws = new WebSocket(url);
+    ws.onopen  = () => chip('c-ws', 'WS: live', 'on');
+    ws.onclose = () => { chip('c-ws', 'WS: retry', 'warn'); setTimeout(() => connectWS(wsUrl), 3000); };
+    ws.onerror = () => chip('c-ws', 'WS: err', 'warn');
+  } catch { chip('c-ws', 'WS: bad url', 'warn'); }
+}
+function sendWS(data) {
+  try { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); } catch {}
+}
+
+// ----------------------------------------------------------------
+//  UI helpers
+// ----------------------------------------------------------------
+function chip(id, text, cls = '') {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'chip ' + cls;
+}
+
+let dataPanelOpen = false;
+function toggleDataPanel() {
+  dataPanelOpen = !dataPanelOpen;
+  document.getElementById('data-panel').style.display = dataPanelOpen ? 'block' : 'none';
+}
+
+// ----------------------------------------------------------------
+//  AR session bootstrap
+// ----------------------------------------------------------------
+const xrBtn = ARButton.createButton(renderer, { optionalFeatures: ['hand-tracking'] });
+xrBtn.style.display = 'none';
+document.body.appendChild(xrBtn);
+
+renderer.xr.addEventListener('sessionstart', () => {
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+});
+renderer.xr.addEventListener('sessionend', () => {
+  document.getElementById('start-screen').style.display = 'flex';
+  document.getElementById('hud').style.display = 'none';
+});
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  const url = document.getElementById('ws-url').value.trim();
+  connectWS(url);
+  xrBtn.click();
+});
+
+document.getElementById('btn-data').addEventListener('click', toggleDataPanel);
+
+// ----------------------------------------------------------------
+//  Render loop
+// ----------------------------------------------------------------
+let frameCount = 0, lastFpsT = performance.now(), lastFpsF = 0;
+
+renderer.setAnimationLoop((t, xrFrame) => {
+  frameCount++;
+  const now = performance.now();
+
+  if (now - lastFpsT > 1000) {
+    const fps = ((frameCount - lastFpsF) / (now - lastFpsT) * 1000) | 0;
+    chip('c-fps', `FPS: ${fps}`, fps >= 50 ? '' : 'warn');
+    lastFpsT = now; lastFpsF = frameCount;
+  }
+
+  if (xrFrame) {
+    const l = getHandData(hand0);
+    const r = getHandData(hand1);
+
+    updateViz(l ? hand0 : null, viz[0]);
+    updateViz(r ? hand1 : null, viz[1]);
+
+    chip('c-left',  l ? `L: ${l.n}` : 'L: --', l ? 'on' : '');
+    chip('c-right', r ? `R: ${r.n}` : 'R: --', r ? 'on' : '');
+
+    if (l || r) {
+      const data = { frame: frameCount, ts: +t.toFixed(1) };
+      if (l) data.left  = l;
+      if (r) data.right = r;
+
+      sendWS(data);
+
+      if (dataPanelOpen) document.getElementById('data-out').textContent = JSON.stringify(data, null, 2);
+    }
+  }
+
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
