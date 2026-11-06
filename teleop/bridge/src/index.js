@@ -23,7 +23,7 @@ const log = (tag, msg) => console.log(`[${tag}] ${msg}`);
 
 // ---------- One-Euro filter (per axis): light smoothing, low lag on fast moves ----------
 class OneEuro {
-  constructor({ minCutoff = 3.0, beta = 0.9, dCutoff = 1.0 } = {}) {
+  constructor({ minCutoff = 1.2, beta = 0.25, dCutoff = 1.0 } = {}) {
     Object.assign(this, { minCutoff, beta, dCutoff, x: null, dx: 0, t: null });
   }
   alpha(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
@@ -133,7 +133,7 @@ function updateHand(h, data, t) {
 // D_REST (the ready-pose wrist, measured relative to the robot's shoulder)
 // and moves by the user's hand delta, torso-aligned via the head yaw frozen
 // at calibration. Two-link solve from there. BRIDGE_IK=0 restores legacy.
-const USE_IK = process.env.BRIDGE_IK !== '0';
+const USE_IK = process.env.BRIDGE_IK === '1'; // experimental; default is the simple anchored mapping
 const ARM_U = 0.22, ARM_F = 0.26; // G1 upper arm / forearm (m)
 const ARM_SCALE = +(process.env.ARM_SCALE || 0.8); // human hand delta -> robot delta
 const D_REST = { left: [0.32, 0.07, -0.23], right: [0.32, -0.07, -0.23] }; // ready-pose wrist, shoulder-relative
@@ -171,20 +171,24 @@ function armTargetsIK(h) {
   return out;
 }
 
-// ---------- legacy mapping (no head pose): hand offsets -> joint targets ----
-// Arms + a forward waist lean on deep reaches (the G1's arms alone max out at
-// ~0.45 m from the waist axis; leaning buys the extra reach a human expects).
-// Legs/wrists stay at their current targets (nulls). Reach forward = -z in XR.
+// ---------- the demo mapping: ready pose + three linear sliders per arm ----
+// Calibration origin = the robot's ready pose (hands flanking the box).
+// Hand up/down -> shoulder pitch; left/right -> shoulder roll; forward/back
+// -> elbow. Linear gains, generous clamps, nothing that can amplify noise.
+const GAIN = { pitch: 3.0, roll: 2.6, elbow: 3.2 }; // rad per metre of hand travel
 function armTargets(h) {
   if (!h.offset) return null;
-  const [dx, dy, dz] = h.offset, reach = -dz, out = {};
+  const basis = h.basis ?? { fwd: [0, 0, -1], right: [1, 0, 0] };
+  // XR delta -> body-aligned: dFwd (reach), dLeft, dUp
+  const dFwd = dot(h.offset, basis.fwd);
+  const dLeft = -dot(h.offset, basis.right);
+  const dUp = h.offset[1];
+  const restRoll = h.side === 'left' ? 0.28 : -0.28;
   const p = `${h.side}_`;
-  out[p + 'shoulder_pitch'] = mapAxis(dy, -0.25, 0.35, 0.5, -2.2);         // hand up -> arm up
-  out[p + 'shoulder_roll'] = h.side === 'right'
-    ? mapAxis(dx, -0.15, 0.3, 0.3, -1.6)                                    // right hand out (+x) -> abduct (-roll)
-    : mapAxis(dx, -0.3, 0.15, 1.6, -0.3);                                   // left hand out (-x) -> abduct (+roll)
-  out[p + 'elbow'] = mapAxis(reach, -0.1, 0.35, 1.9, -0.4);                 // reach forward -> extend
-  out._reach = reach;
+  const out = {};
+  out[p + 'shoulder_pitch'] = clamp(-0.85 - dUp * GAIN.pitch, -2.3, 0.4);
+  out[p + 'shoulder_roll'] = clamp(restRoll + dLeft * GAIN.roll, -1.9, 1.9);
+  out[p + 'elbow'] = clamp(1.3 - dFwd * GAIN.elbow, 0.05, 2.0);
   return out;
 }
 
@@ -265,7 +269,7 @@ setInterval(() => {
     else if (maxReach != null) targets[wi] = +mapAxis(maxReach, 0.05, 0.35, 0, 0.5).toFixed(4); // legacy
   }
   if (targets.every((v) => v == null)) return;
-  if (lastSent && targets.every((v, i) => v == null || lastSent[i] == null || Math.abs(v - lastSent[i]) < 0.002)) return;
+  if (lastSent && targets.every((v, i) => v == null || lastSent[i] == null || Math.abs(v - lastSent[i]) < 0.005)) return;
   lastSent = targets;
   simWs.send(JSON.stringify({ t: 'ctrl', targets }));
 }, 1000 / RATE_HZ);
