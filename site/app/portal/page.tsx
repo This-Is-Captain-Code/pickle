@@ -134,31 +134,31 @@ export default function Portal() {
         </div>
       </header>
 
-      <section className="flex flex-col gap-4">
+      <section className="grid gap-4 md:grid-cols-3">
         {BOUNTIES.map((b) => (
           <article
             key={b.id}
-            className="grid gap-5 rounded-xl border border-[var(--line)] bg-[var(--bg-raise)] p-6 md:grid-cols-[1fr_auto]"
-            style={{ borderLeft: `3px solid ${b.accent}` }}
+            className="flex min-w-0 flex-col gap-4 rounded-xl border border-[var(--line)] bg-[var(--bg-raise)] p-6"
+            style={{ borderTop: `3px solid ${b.accent}` }}
           >
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="chip" style={{ ['--ca' as string]: b.accent }}>
-                  {b.cls} · {b.dir}
-                </span>
-                <span className="chip" style={{ ['--ca' as string]: STATUS_STYLE[b.status] }}>
-                  {b.status}
-                  {b.live && b.status === 'OPEN' ? ' · LIVE' : ''}
-                </span>
-              </div>
-              <h2 className="font-display mt-3 text-xl font-bold sm:text-2xl">{b.title}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="chip" style={{ ['--ca' as string]: b.accent }}>
+                {b.cls} · {b.dir}
+              </span>
+              <span className="chip" style={{ ['--ca' as string]: STATUS_STYLE[b.status] }}>
+                {b.status}
+                {b.live && b.status === 'OPEN' ? ' · LIVE' : ''}
+              </span>
+            </div>
+            <div>
+              <h2 className="font-display text-xl font-bold">{b.title}</h2>
               <p className="font-mono mt-1 text-xs text-[var(--fg-dim)]">
                 {b.robot} · bounty {b.id}
               </p>
-              <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-[var(--fg-dim)]">{b.detail}</p>
             </div>
-            <div className="flex flex-col items-start justify-between gap-4 md:items-end">
-              <div className="md:text-right">
+            <p className="flex-1 text-[14px] leading-relaxed text-[var(--fg-dim)]">{b.detail}</p>
+            <div className="flex items-end justify-between gap-4 border-t border-[var(--line)] pt-4">
+              <div>
                 <div className="font-display text-3xl font-bold text-[var(--fg)] tabular-nums">
                   {b.reward} <span className="text-base text-[var(--fg-dim)]">USDC</span>
                 </div>
@@ -169,7 +169,7 @@ export default function Portal() {
                   {b.cta.label}
                 </a>
               ) : (
-                <span className="font-mono max-w-[220px] text-right text-[11px] leading-relaxed text-[var(--fg-dim)]">
+                <span className="font-mono max-w-[160px] text-right text-[11px] leading-relaxed text-[var(--fg-dim)]">
                   {b.ctaNote ?? 'bounty complete 🥒'}
                 </span>
               )}
