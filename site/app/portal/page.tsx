@@ -8,6 +8,9 @@ import Link from 'next/link';
 
 const RELAY_HTTP = 'https://pickle-hand-relay.pickle-delhi.workers.dev';
 const RELAY_WS = 'wss://pickle-hand-relay.pickle-delhi.workers.dev/claims';
+// The sim viewer runs on the demo laptop; TAKE CONTROL opens it there while
+// the Spectacles (opened separately on the glasses) stream the hands.
+const SIM_VIEWER = process.env.NEXT_PUBLIC_SIM_VIEWER || 'http://localhost:8787/?token=dev-token';
 
 type Status = 'OPEN' | 'VERIFYING' | 'CLAIMED' | 'VERIFIED' | 'NEGOTIATING';
 
@@ -92,7 +95,7 @@ export default function Portal() {
       rewardNote: 'per session + data license',
       status: 'OPEN' as Status,
       live: false,
-      cta: { label: 'TAKE CONTROL →', href: `${RELAY_HTTP}/` },
+      cta: { label: 'TAKE CONTROL →', href: SIM_VIEWER },
     },
     {
       id: 'b-slot-7',
