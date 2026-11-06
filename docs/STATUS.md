@@ -6,7 +6,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 |---|---|---|---|
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
 | 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
-| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 Rebuilt 17:50 on branch `gopika/compute-testnet` (worktree `../pickle-compute`): **text = testnet direct SDK, vision = mainnet Router**, swappable via `ZEROG_COMPUTE_MODE`. `smoke:compute-down` ✅ PASS, 5 outage modes across both backends. `smoke:compute` text is **waiting for ≥ 3.5 testnet 0G at COMPUTE_WALLET** (asked 0G mentors); vision is waiting for Router credits (`402 pay_no_balance`, and `0gm-1.0-35b-a3b` provider 502 at 16:47, x-request-id `ac87632ee2e3dd78`) | started 16:29 |
+| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 Rebuilt 17:50 on branch `gopika/compute-testnet` (worktree `../pickle-compute`): **text = testnet direct SDK, vision = mainnet Router**, swappable via `ZEROG_COMPUTE_MODE`. `smoke:compute-down` ✅ PASS, 5 outage modes across both backends. `smoke:compute` text: **❌ the provider requires ≥ 1 0G locked in the sub-account.** The 20:45 small-budget attempt (0.15 ledger / 0.05 sub-account) was rejected and refunded; see "Compute small-budget attempt" below. **Needs ≥ ~1.1 testnet 0G at COMPUTE_WALLET.** Vision is waiting for Router credits (`402 pay_no_balance`; `0gm-1.0-35b-a3b` provider 502 at 16:47, x-request-id `ac87632ee2e3dd78`); testnet has no image model | started 16:29 |
 | 4 | 0G Storage: `smoke:storage` | ✅ PASS 2026-11-06 17:26 IST (first attempt) | see Pickle session below |
 | 5 | World ID 4.0 + IDKit: `smoke:world` (success, tampered, duplicate, cancelled) | ✅ PASS 2026-11-06 20:32 IST. App `app_8db3…c431`, RP `rp_23ff310ecada5143`, one action per bounty; details in world-debrief.md | 1 h 41 min (18:45 → 20:26 first success) |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
@@ -86,6 +86,26 @@ Funding received: 0.5 0G at the deployer (confirmed via `eth_getBalance` before 
 | `set(1793961404343)` | [0xc1bcb73e…cbc88](https://chainscan-galileo.0g.ai/tx/0xc1bcb73e48fdfb55805f51a84c2f99e7824c74a837e6fef1a42de585025cbc88) | 0.000268676 0G |
 
 Deployer balance after step 2: 0.499257 0G.
+
+### Compute small-budget attempt (2026-11-06 20:45 IST, approved by Gopika)
+Goal: create the 0G Compute ledger at the **contract** minimum (0.1 0G) instead of the SDK's client-side 3 0G, via `zerog/scripts/fund-compute-direct.mts`, which calls LedgerManager directly.
+
+| # | Purpose | From → to | Tx | Value | Gas |
+|---|---|---|---|---|---|
+| 1 | Fund COMPUTE_WALLET | DEPLOYER → `0xAf7F…F0ad` | [0xc78f9a51…](https://chainscan-galileo.0g.ai/tx/0xc78f9a51f21579ca66f787975253a2305816334a23a2dc916bfe618ee4aaa0f3) | 0.17 0G | 0.000084 0G |
+| 2 | `addLedger('')`, accepted below SDK minimum | COMPUTE_WALLET → LedgerManager `0xE708…E406` | [0x994afbd1…](https://chainscan-galileo.0g.ai/tx/0x994afbd1748539d350dc07809d8a416047c40c7bddd9d2044ec72ad1558b020b) | 0.15 0G | 0.000719 0G |
+| 3 | `transferFund` 0.05 → provider `0xd626…C940`. Service name = `getServiceInfo(InferenceServing).fullName`; the literal `"inference"` reverts `ServiceNotFound(address)` | ledger → sub-account | [0x8598dc2b…](https://chainscan-galileo.0g.ai/tx/0x8598dc2b6a79d45a1b191bc282d05674d7f516e45c81347b53d72f24014bedb8) | (0.05 internal) | 0.001783 0G |
+| 4 | Text request → **HTTP 400** (exact error below) | — | — | — | 0 |
+| 5 | `retrieveFund` (refund) | sub-account → `pendingRefund` (24 h lock) | [0x33dfd994…](https://chainscan-galileo.0g.ai/tx/0x33dfd994326097551230a19bfa37a31e0378960104a8003cb9adae63da8e13b8) | (0.05 internal) | 0.000952 0G |
+| 6 | `refund(0.1)` | ledger → COMPUTE_WALLET | [0x3c603dd6…](https://chainscan-galileo.0g.ai/tx/0x3c603dd6138f634809222c1753ee534c320747a751497a93ea35436aa6bbf71c) | 0.10 0G back | 0.000311 0G |
+
+- **Exact provider error (step 4):** `HTTP 400 {"error":"validate request: insufficient balance: your locked balance is 0.050000 0G, but the required minimum is 1.000000 0G (breakdown: minimum reserve 1.000000 0G + unsettled fees 0.000000 0G + current request fee 0.000000 0G). Please add more funds with: 0g-compute-cli transfer-fund --provider 0xd6269e257761705B9e442E59794703762DFcC940 --amount <amount>"}`
+- **Vision on `qwen3.8-omni-flash`:** not testable. Every request is rejected by the balance check before the content is read, and the provider's `/v1/models` already says `input_modalities: ["text"]`.
+- **Totals:** gas 0.003849 0G (spent).
+  - 0.116235 0G is back in COMPUTE_WALLET.
+  - **0.05 0G is locked** in `pendingRefund` until ≈ **2026-11-07 20:48 IST** (`InferenceServing.lockTime = 86400 s`). Claim it then with `--retrieve` followed by `--refund 0.05`.
+  - DEPLOYER: 0.440290 → **0.270206 0G** (stays above the 0.2 floor).
+- **Conclusion:** the provider enforces a **1 0G minimum reserve** server-side. The SDK's 3 0G ledger rule is stricter than the contract's 0.1, but the provider's 1 0G is real. Minimum to run testnet text compute: ledger ≥ 0.1 + sub-account ≥ 1.0 + per-request fees → **≈ 1.1 0G** at COMPUTE_WALLET (it already holds 0.116).
 
 ## Packages installed
 

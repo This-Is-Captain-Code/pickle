@@ -160,6 +160,17 @@ Proposed for smoke tests: text and vision both on **`0gm-1.0-35b-a3b`** (TEE-att
 - zerobot's `AIBroker` uses this path, with default model `qwen-2.5-7b-instruct` (ZB `sdk/src/ai/broker.ts`). **That model is not registered on testnet today.**
 - CLI `@0gfoundation/0gpc` needs macOS/Linux and Node ≥ 22 (PC). It isn't usable on our Windows + Node 20.16 box, and we don't need it.
 
+**Minimums actually enforced (measured live 2026-11-06 20:45):**
+
+| Who | Minimum | Enforcement |
+|---|---|---|
+| Contract `MIN_ACCOUNT_BALANCE` | 0.1 0G | `addLedger` with 0.15 0G succeeded via a direct contract call |
+| SDK | 3 0G | client-side only |
+| **Provider** (`qwen/qwen3.8-omni-flash`) | **1 0G locked in the sub-account** | Server-side: `400 … your locked balance is 0.050000 0G, but the required minimum is 1.000000 0G (breakdown: minimum reserve 1.000000 0G …)` |
+
+- `transferFund`'s service name must be `LedgerManager.getServiceInfo(InferenceServing).fullName`; the literal `"inference"` reverts `ServiceNotFound(address)`.
+- `retrieveFund` moves the sub-account into `pendingRefund`, held for `InferenceServing.lockTime` = 86400 s (24 h).
+
 **Testnet providers — live `listService()` + reachability from our machine, 2026-11-06 17:40 IST**
 
 Produced by `npx tsx zerog/scripts/list-testnet-services.ts`, which is read-only (no wallet).
