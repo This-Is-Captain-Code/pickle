@@ -19,7 +19,11 @@
     "smoke:chain": "npm run compile --prefix contracts/hardhat && tsx agents/scripts/smoke/chain.ts",
     "smoke:compute": "tsx agents/scripts/smoke/compute.ts",
     "smoke:compute-down": "tsx agents/scripts/smoke/compute-down.ts",
-    "wallets": "tsx agents/scripts/wallets.ts"
+    "wallets": "tsx agents/scripts/wallets.ts",
+    "deploy:escrow": "npm run compile --prefix contracts/hardhat && tsx agents/scripts/deploy-escrow.ts",
+    "smoke:tx": "tsx agents/scripts/smoke/tx.ts",
+    "test:contracts": "npm test --prefix contracts/hardhat",
+    "smoke:escrow": "tsx agents/scripts/smoke/escrow.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
