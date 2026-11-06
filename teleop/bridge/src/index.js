@@ -184,13 +184,23 @@ function connectRelay() {
   ws.on('open', () => log('relay', `connected ${RELAY_WS_URL}`));
   ws.on('close', () => { log('relay', 'closed, retrying in 3s'); setTimeout(connectRelay, 3000); });
   ws.on('error', (e) => log('relay', `error: ${e.message}`));
-  let n = 0;
+  // Latest-frame sampling: a WS hiccup makes the relay deliver a burst of
+  // queued frames at once — replaying them moves the robot "on its own" with
+  // stale motion. Keep only the freshest frame per tick, drop the backlog.
+  let latest = null, dropped = 0, n = 0;
   ws.on('message', (buf) => {
     let m; try { m = JSON.parse(buf); } catch { return; }
     if (!m.left && !m.right) return;
-    if (++n % 300 === 1) log('relay', `frames flowing (#${n})`);
-    onFrame(m);
+    if (latest) dropped++;
+    latest = m;
+    if (++n % 600 === 1) log('relay', `frames flowing (#${n}, ${dropped} stale dropped)`);
   });
+  setInterval(() => {
+    if (!latest) return;
+    const m = latest;
+    latest = null;
+    onFrame(m);
+  }, 1000 / 90);
 }
 
 function runFake() {
