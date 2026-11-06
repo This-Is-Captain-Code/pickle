@@ -67,6 +67,7 @@ export default function Portal() {
       cls: 'PHYSICAL',
       dir: 'HUMAN → ROBOT',
       accent: 'var(--red)',
+      img: '/panels/physical.jpg',
       robot: 'watcher-01 · SenseCAP Watcher',
       title: 'Plug me back in',
       detail:
@@ -82,6 +83,7 @@ export default function Portal() {
       cls: 'REMOTE',
       dir: 'HUMAN → ROBOT',
       accent: 'var(--cyan)',
+      img: '/panels/remote.jpg',
       robot: 'g1-sim-01 · Unitree G1 (MuJoCo)',
       title: 'Rail fell across my feeder — take control and lift it off',
       detail:
@@ -97,6 +99,7 @@ export default function Portal() {
       cls: 'MACHINE',
       dir: 'ROBOT → ROBOT',
       accent: 'var(--yellow)',
+      img: '/panels/machine.jpg',
       robot: 'tdeck-01 · charging slot B',
       title: 'Charging slot lease, 09:00–09:40',
       detail:
@@ -138,9 +141,21 @@ export default function Portal() {
         {BOUNTIES.map((b) => (
           <article
             key={b.id}
-            className="flex min-w-0 flex-col gap-4 rounded-xl border border-[var(--line)] bg-[var(--bg-raise)] p-6"
+            className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-raise)]"
             style={{ borderTop: `3px solid ${b.accent}` }}
           >
+            <div className="relative h-44 w-full shrink-0">
+              <img
+                src={b.img}
+                alt={`${b.cls} bounty`}
+                className="h-full w-full object-cover [filter:grayscale(0.35)_brightness(0.8)]"
+              />
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: `linear-gradient(to top, var(--bg-raise), transparent 60%), linear-gradient(to top, color-mix(in srgb, ${b.accent} 18%, transparent), transparent 50%)` }}
+              />
+            </div>
+            <div className="flex flex-1 flex-col gap-4 p-6 pt-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="chip" style={{ ['--ca' as string]: b.accent }}>
                 {b.cls} · {b.dir}
@@ -173,6 +188,7 @@ export default function Portal() {
                   {b.ctaNote ?? 'bounty complete 🥒'}
                 </span>
               )}
+            </div>
             </div>
           </article>
         ))}
