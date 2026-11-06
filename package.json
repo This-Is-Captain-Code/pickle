@@ -1,0 +1,23 @@
+{
+  "name": "pickle",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "shared",
+    "world",
+    "zerog",
+    "agents"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w agents",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}

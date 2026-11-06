@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "paths": {
+      "@pickle/shared": ["./shared/src/index.ts"],
+      "@pickle/world": ["./world/src/index.ts"],
+      "@pickle/zerog": ["./zerog/src/index.ts"]
+    }
+  },
+  "include": ["shared/src", "world/src", "zerog/src", "agents/src"]
+}

@@ -4,6 +4,7 @@ PRIVATE_NOTES.md
 # Secrets
 .env
 .env.*
+!.env.example
 *.pem
 wifi_creds.h
 
