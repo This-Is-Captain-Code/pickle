@@ -98,9 +98,11 @@ function armTargets(h) {
   const [dx, dy, dz] = h.offset, reach = -dz, out = {};
   const p = `${h.side}_`;
   out[p + 'shoulder_pitch'] = mapAxis(dy, -0.25, 0.35, 0.5, -2.2);         // hand up -> arm up
+  // Same slope as always (~4.2 rad/m), but the cross-body stops are lifted:
+  // either arm can now sweep well past the centerline to push the box across.
   out[p + 'shoulder_roll'] = h.side === 'right'
-    ? mapAxis(dx, -0.15, 0.3, 0.3, -1.6)                                    // right hand out (+x) -> abduct (-roll)
-    : mapAxis(dx, -0.3, 0.15, 1.6, -0.3);                                   // left hand out (-x) -> abduct (+roll)
+    ? mapAxis(dx, -0.3, 0.3, 0.93, -1.6)                                    // right hand: out (+x) -> abduct, across (-x) -> cross to +0.93
+    : mapAxis(dx, -0.3, 0.3, 1.6, -0.93);                                   // left hand: out (-x) -> abduct, across (+x) -> cross to -0.93
   out[p + 'elbow'] = mapAxis(reach, -0.15, 0.5, 1.9, -0.1);                 // reach forward -> extend (full extension needs a deliberate ~0.5 m reach)
   return out;
 }
