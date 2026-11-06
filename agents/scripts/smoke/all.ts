@@ -46,7 +46,13 @@ const TESTS: Test[] = [
       : ['ZEROG_ROUTER_KEY'],
   },
   { name: 'smoke:compute-down', file: 'compute-down.ts' },
-  { name: 'smoke:world', file: 'world.ts', needs: ['WORLD_IDP_CLIENT_ID', 'WORLD_IDP_CLIENT_SECRET'] },
+  // Interactive (a human scans 3 QR codes in World App), so only run when asked.
+  {
+    name: 'smoke:world',
+    file: 'world.ts',
+    needs: ['WORLD_APP_ID', 'WORLD_RP_ID', 'WORLD_RP_SIGNING_KEY', 'WORLD_PORTAL_API_KEY'],
+    skip: process.env.SMOKE_INTERACTIVE === '1' ? undefined : 'interactive (World App scans) — run `npm run smoke:world`, or SMOKE_INTERACTIVE=1',
+  },
   { name: 'smoke:zerobot', file: 'zerobot.ts', skip: 'not built yet (vendor/zerobot setup pending)' },
 ];
 
