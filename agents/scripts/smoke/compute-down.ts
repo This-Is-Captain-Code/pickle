@@ -1,16 +1,15 @@
 /**
  * smoke:compute-down — 0G unreachable must yield UNAVAILABLE + safe-stop, never a decision.
  *
- * Runs the REAL ZeroGDecisionEngine against endpoints that cannot answer:
- *  a) a closed local port (connection refused)
- *  b) an unresolvable host (DNS failure)
- *  c) a local server that answers 503 no_available_provider (Router's documented outage code)
+ * Runs the REAL ZeroGDecisionEngine, on BOTH backends, against endpoints that cannot answer:
+ *  router: closed local port, unresolvable host, a local server answering 503 no_available_provider
+ *  direct: Galileo RPC on a closed port, unresolvable RPC host (broker can't initialise)
  * For each: decideOrSafeStop() must return status UNAVAILABLE, the safe-stop hook must fire exactly once,
  * and no Decision object may be produced. No API key or network access to 0G is needed.
  */
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { ZeroGDecisionEngine } from '@pickle/zerog';
+import { ZeroGDecisionEngine, type ZeroGComputeConfig } from '@pickle/zerog';
 import { decideOrSafeStop } from '../../src/decide.ts';
 import { isMain, runSmoke } from './lib.ts';
 
@@ -23,15 +22,19 @@ export function smokeComputeDown(opts: { noExit?: boolean } = {}) {
     await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
     const port503 = (srv.address() as AddressInfo).port;
 
-    const cases = [
-      ['connection refused', 'http://127.0.0.1:9/v1'],
-      ['DNS failure', 'https://router.invalid/v1'],
-      ['HTTP 503', `http://127.0.0.1:${port503}/v1`],
-    ] as const;
+    // A throwaway, unfunded key for the direct cases — nothing is ever sent from it.
+    const dummyKey = '0x' + '11'.repeat(32);
+    const cases: [string, ZeroGComputeConfig][] = [
+      ['router: conn refused', { mode: 'router', routerBaseUrl: 'http://127.0.0.1:9/v1', routerApiKey: 'sk-smoke-dummy', model: '0gm-1.0-35b-a3b', timeoutMs: 5000 }],
+      ['router: DNS failure', { mode: 'router', routerBaseUrl: 'https://router.invalid/v1', routerApiKey: 'sk-smoke-dummy', model: '0gm-1.0-35b-a3b', timeoutMs: 5000 }],
+      ['router: HTTP 503', { mode: 'router', routerBaseUrl: `http://127.0.0.1:${port503}/v1`, routerApiKey: 'sk-smoke-dummy', model: '0gm-1.0-35b-a3b', timeoutMs: 5000 }],
+      ['direct: RPC down', { mode: 'direct', rpcUrl: 'http://127.0.0.1:9', privateKey: dummyKey, model: '', timeoutMs: 5000 }],
+      ['direct: RPC DNS', { mode: 'direct', rpcUrl: 'https://rpc.invalid', privateKey: dummyKey, model: '', timeoutMs: 5000 }],
+    ];
 
     try {
-      for (const [label, url] of cases) {
-        const engine = new ZeroGDecisionEngine({ mode: 'router', routerBaseUrl: url, routerApiKey: 'sk-smoke-dummy', model: '0gm-1.0-35b-a3b', timeoutMs: 5000 });
+      for (const [label, cfg] of cases) {
+        const engine = new ZeroGDecisionEngine(cfg);
         const stops: string[] = [];
         const out = await decideOrSafeStop(
           engine,
