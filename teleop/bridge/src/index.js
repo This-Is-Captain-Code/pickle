@@ -15,7 +15,7 @@ import WebSocket from 'ws';
 const SIM_URL = process.env.SIM_URL || 'http://localhost:8787';
 const SIM_WS = SIM_URL.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(process.env.SIM_TELEOP_TOKEN || 'dev-token');
 const RELAY_WS_URL = process.env.RELAY_WS_URL || 'wss://pickle-hand-relay.pickle-delhi.workers.dev/pickle';
-const RATE_HZ = +(process.env.RATE_HZ || 30);
+const RATE_HZ = +(process.env.RATE_HZ || 60);
 const AUTO_BEGIN = process.env.BRIDGE_AUTO_BEGIN === '1'; // dev: begin teleop as soon as the robot is stuck
 const FAKE = process.argv.includes('--fake');
 
@@ -23,7 +23,7 @@ const log = (tag, msg) => console.log(`[${tag}] ${msg}`);
 
 // ---------- One-Euro filter (per axis): light smoothing, low lag on fast moves ----------
 class OneEuro {
-  constructor({ minCutoff = 1.5, beta = 0.3, dCutoff = 1.0 } = {}) {
+  constructor({ minCutoff = 3.0, beta = 0.9, dCutoff = 1.0 } = {}) {
     Object.assign(this, { minCutoff, beta, dCutoff, x: null, dx: 0, t: null });
   }
   alpha(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
@@ -167,7 +167,7 @@ setInterval(() => {
     if (i != null) targets[i] = +mapAxis(maxReach, 0.05, 0.35, 0, 0.5).toFixed(4); // deep reach -> lean in
   }
   if (targets.every((v) => v == null)) return;
-  if (lastSent && targets.every((v, i) => v == null || lastSent[i] == null || Math.abs(v - lastSent[i]) < 0.005)) return;
+  if (lastSent && targets.every((v, i) => v == null || lastSent[i] == null || Math.abs(v - lastSent[i]) < 0.002)) return;
   lastSent = targets;
   simWs.send(JSON.stringify({ t: 'ctrl', targets }));
 }, 1000 / RATE_HZ);
