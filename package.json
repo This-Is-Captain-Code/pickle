@@ -23,7 +23,9 @@
     "deploy:escrow": "npm run compile --prefix contracts/hardhat && tsx agents/scripts/deploy-escrow.ts",
     "smoke:tx": "tsx agents/scripts/smoke/tx.ts",
     "test:contracts": "npm test --prefix contracts/hardhat",
-    "smoke:escrow": "tsx agents/scripts/smoke/escrow.ts"
+    "smoke:escrow": "tsx agents/scripts/smoke/escrow.ts",
+    "smoke:storage": "tsx agents/scripts/smoke/storage.ts",
+    "smoke:episode": "tsx agents/scripts/smoke/episode.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
