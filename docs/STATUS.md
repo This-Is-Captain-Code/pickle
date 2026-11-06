@@ -6,7 +6,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 |---|---|---|---|
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
 | 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
-| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 `smoke:compute-down` ✅ PASS 16:35. `smoke:compute` ❌ blocked on 0G's side (16:47): the account has **no balance** (`402 pay_no_balance`), and the `0gm-1.0-35b-a3b` provider fails its quote fetch (`502 upstream_error … compute-network-20.integratenetwork.work … EOF`, x-request-id `ac87632ee2e3dd78`) | started 16:29 |
+| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 Rebuilt 17:50 on branch `gopika/compute-testnet` (worktree `../pickle-compute`): **text = testnet direct SDK, vision = mainnet Router**, swappable via `ZEROG_COMPUTE_MODE`. `smoke:compute-down` ✅ PASS, 5 outage modes across both backends. `smoke:compute` text is **waiting for ≥ 3.5 testnet 0G at COMPUTE_WALLET** (asked 0G mentors); vision is waiting for Router credits (`402 pay_no_balance`, and `0gm-1.0-35b-a3b` provider 502 at 16:47, x-request-id `ac87632ee2e3dd78`) | started 16:29 |
 | 4 | 0G Storage: `smoke:storage` | ⏸ | — |
 | 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ | — |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
@@ -18,6 +18,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 |---|---|---|---|
 | `0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd` | Deployer (contracts on Galileo). Key in `agents/.env` as `DEPLOYER_PRIVATE_KEY` | 0G Galileo 16602 — https://chainscan-galileo.0g.ai/address/0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd | 2026-11-06 |
 | `0xaEd150ed47D91A489AfF7631bb06F5d4CCBF2162` | SmokeStore (smoke:chain test contract, not used by app) | Galileo — https://chainscan-galileo.0g.ai/address/0xaEd150ed47D91A489AfF7631bb06F5d4CCBF2162 | 2026-11-06 |
+| `0xAf7F5E66959125bba8a62D59Be8664745864F0ad` | **COMPUTE_WALLET**: pays the 0G Compute ledger (testnet direct). Kept separate so compute never sends from the deployer while other processes use it. Key in the compute worktree's `agents/.env` as `COMPUTE_WALLET_PRIVATE_KEY`. Unfunded; ≥ 3.5 0G requested | Galileo — https://chainscan-galileo.0g.ai/address/0xAf7F5E66959125bba8a62D59Be8664745864F0ad | 2026-11-06 17:55 |
 
 Funding received: 0.5 0G at the deployer (confirmed via `eth_getBalance` before the first tx).
 
@@ -39,6 +40,8 @@ Deployer balance after step 2: 0.499257 0G.
 | hardhat | 2.29.1 | contracts/hardhat (dev) | D2: Hardhat 2 (0G-DEPLOY shows Hardhat; zerobot uses ^2.22) |
 | solc | 0.8.27 (downloaded by Hardhat) | — | zerobot config; cancun per 0G-DEPLOY |
 | tsx 4.23.15, typescript 5.9.3 | (root, already in lockfile) | root | ran `npm install` at the root, which had never been run |
+| @0gfoundation/0g-compute-ts-sdk | 0.9.0 | zerog | testnet direct compute + read-only provider listing (0G-INF; latest on NPM). ESM build broken → loaded via CommonJS |
+| ethers | 6.13.1 | zerog | SDK peer dep; pinned to the same version as `agents/` so there is one copy (two copies break the SDK's `Wallet` types) |
 
 ## Decisions (made 2026-11-06)
 
