@@ -1,0 +1,16 @@
+{
+  "galileo": {
+    "chainId": 16602,
+    "explorer": "https://chainscan-galileo.0g.ai",
+    "contracts": {
+      "SmokeStore": {
+        "address": "0xaEd150ed47D91A489AfF7631bb06F5d4CCBF2162",
+        "deployTx": "0x990dfdf8ba9ea9f6a7fbce1c0507f25bc00d32b413193f691547f8527663218d",
+        "deployer": "0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd",
+        "block": 64153100,
+        "purpose": "smoke:chain test contract (not used by the app)",
+        "deployedAt": "2026-11-06T10:36:58.428Z"
+      }
+    }
+  }
+}
