@@ -21,6 +21,12 @@ export interface ChatResult {
   provider?: string;
   /** Router: x_0g_trace.tee_verified. Direct: broker.inference.processResponse() result. */
   teeVerified?: boolean;
+  /** Router: `x-0g-e2ee` header (`sealed` in Private/TEE trust mode). */
+  e2ee?: string;
+  /** Router: `x-request-id` header (gateway id + request id). */
+  xRequestId?: string;
+  /** Router: x_0g_trace.billing.total_cost_usd_micro (credits are billed in USD). */
+  costUsdMicro?: string;
   costNeuron?: string;
   usage?: Record<string, unknown>;
   backend: 'router' | 'direct';

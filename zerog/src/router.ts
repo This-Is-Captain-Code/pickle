@@ -31,6 +31,11 @@ export interface RouterConfig {
   model: string;
   /** Ask the Router to verify the provider's TEE signature synchronously. */
   verifyTee?: boolean;
+  /**
+   * Reasoning models (e.g. 0gm-1.0-35b-a3b) spend max_tokens on reasoning_content and return empty content.
+   * true → send chat_template_kwargs.enable_thinking=false (measured: 5 µUSD vs 63 µUSD, same answer).
+   */
+  disableThinking?: boolean;
   timeoutMs?: number;
   /** Retries for transient failures (network, 429, 5xx). Default 1. */
   retries?: number;
@@ -53,7 +58,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function routerChat(cfg: RouterConfig, messages: ChatMessage[], extra: Record<string, unknown> = {}): Promise<RouterResult> {
   if (!cfg.apiKey || cfg.apiKey === 'sk-...') throw new ZeroGUnreachable('no 0G Router API key configured');
   const url = `${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const body = JSON.stringify({ model: cfg.model, messages, ...(cfg.verifyTee ? { verify_tee: true } : {}), ...extra });
+  const body = JSON.stringify({
+    model: cfg.model,
+    messages,
+    ...(cfg.verifyTee ? { verify_tee: true } : {}),
+    ...(cfg.disableThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+    ...extra,
+  });
   const retries = cfg.retries ?? 1;
   let lastErr = 'unknown error';
 
@@ -107,6 +118,9 @@ export async function routerChat(cfg: RouterConfig, messages: ChatMessage[], ext
       provider: typeof trace.provider === 'string' ? trace.provider : trace.provider?.address ?? trace.provider?.name,
       teeVerified: trace.tee_verified,
       costNeuron: trace.billing?.total_cost?.toString(),
+      costUsdMicro: trace.billing?.total_cost_usd_micro?.toString(),
+      e2ee: res.headers.get('x-0g-e2ee') ?? undefined,
+      xRequestId: res.headers.get('x-request-id') ?? undefined,
       usage: json?.usage,
       backend: 'router',
     };

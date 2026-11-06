@@ -21,6 +21,8 @@ export interface ZeroGComputeConfig {
   model: string;
   /** Router: send verify_tee. Direct: reject responses whose TEE signature doesn't verify. */
   verifyTee?: boolean;
+  /** Router: turn off reasoning for reasoning models (default true). */
+  disableThinking?: boolean;
   timeoutMs?: number;
 }
 
@@ -43,6 +45,7 @@ export function buildBackend(c: ZeroGComputeConfig): ChatBackend {
     apiKey: c.routerApiKey ?? '',
     model: c.model || DEFAULT_MODEL,
     verifyTee: c.verifyTee ?? true,
+    disableThinking: c.disableThinking ?? true,
     timeoutMs: c.timeoutMs,
   });
 }
