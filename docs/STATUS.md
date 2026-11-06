@@ -6,7 +6,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 |---|---|---|---|
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
 | 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
-| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 Rebuilt 17:50 on branch `gopika/compute-testnet` (worktree `../pickle-compute`): **text = testnet direct SDK, vision = mainnet Router**, swappable via `ZEROG_COMPUTE_MODE`. `smoke:compute-down` ✅ PASS, 5 outage modes across both backends. `smoke:compute` text: **❌ the provider requires ≥ 1 0G locked in the sub-account.** The 20:45 small-budget attempt (0.15 ledger / 0.05 sub-account) was rejected and refunded; see "Compute small-budget attempt" below. **Needs ≥ ~1.1 testnet 0G at COMPUTE_WALLET.** Vision is waiting for Router credits (`402 pay_no_balance`; `0gm-1.0-35b-a3b` provider 502 at 16:47, x-request-id `ac87632ee2e3dd78`); testnet has no image model | started 16:29 |
+| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | ✅ **PASS 2026-11-06 ~21:00 IST on the mainnet Router** ($4.99 credit, `ZEROG_COMPUTE_MODE=router`, Private/TEE-trust key). Text and vision both on `0gm-1.0-35b-a3b` (TEE), no Standard fallback needed. See "Compute on the Router" below. Testnet direct is shelved (provider requires a 1 0G sub-account reserve). `smoke:compute-down` ✅ | 16:29 → ~21:00 (blocked most of that time on funding) |
 | 4 | 0G Storage: `smoke:storage` | ✅ PASS 2026-11-06 17:26 IST (first attempt) | see Pickle session below |
 | 5 | World ID 4.0 + IDKit: `smoke:world` (success, tampered, duplicate, cancelled) | ✅ PASS 2026-11-06 20:32 IST. App `app_8db3…c431`, RP `rp_23ff310ecada5143`, one action per bounty; details in world-debrief.md | 1 h 41 min (18:45 → 20:26 first success) |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
@@ -86,6 +86,31 @@ Funding received: 0.5 0G at the deployer (confirmed via `eth_getBalance` before 
 | `set(1793961404343)` | [0xc1bcb73e…cbc88](https://chainscan-galileo.0g.ai/tx/0xc1bcb73e48fdfb55805f51a84c2f99e7824c74a837e6fef1a42de585025cbc88) | 0.000268676 0G |
 
 Deployer balance after step 2: 0.499257 0G.
+
+### Compute on the Router (2026-11-06 ~21:00 IST)
+
+| Call | Key | Model | Latency | 0G request id | Trust / TEE | Cost |
+|---|---|---|---|---|---|---|
+| Text decision → `post_teleop_bounty` | TEE (Private) | `0gm-1.0-35b-a3b` | 3038 ms | `b1dbde8e-e713-40a9-9afc-677b1f4634b5` | `x-0g-e2ee: sealed`; `tee_verified` not returned | 30 µUSD |
+| Vision, red square → "red" | TEE (Private) | `0gm-1.0-35b-a3b` | 2123 ms | `37f6871e-26f0-4f56-9e7b-62450a072cef` | `x-0g-e2ee: sealed`; `tee_verified` not returned | 7 µUSD |
+| Diagnostics (3 probe calls) | TEE | `0gm-1.0-35b-a3b` | — | — | — | 18 + 5 + 63 + 9 µUSD |
+| `smoke:all` run, text + vision | TEE | `0gm-1.0-35b-a3b` | 2773 / 2185 ms | `0a74c469-…` | sealed | ~36 µUSD |
+
+- **Credit used today:** ≈ 0.0002 USD of the $4.99.
+- **`0gm-1.0-35b-a3b` is a reasoning model.** Without `chat_template_kwargs: {enable_thinking: false}` it spends `max_tokens` on `reasoning_content` and returns `content: ""` (`finish_reason: length`). With thinking off a decision costs ~5–30 µUSD instead of ~63 µUSD. The router client now sends this by default.
+- `verify_tee: true` returned **no `tee_verified` field** in Private trust mode, which contradicts the chat-completions doc. The TEE evidence we record is `x-0g-e2ee: sealed`, plus the catalog's `tee_attested: true` (`TDX`, verified via dstack).
+- The Router bills USD credit: `x_0g_trace.billing.total_cost_usd_micro`.
+- **No Standard key in `agents/.env`** (`ZEROG_ROUTER_KEY_STANDARD` absent). The fallback exists in code but wasn't needed.
+
+### Merge of `origin/main` (2026-11-06 ~21:10 IST)
+- Merged 45 commits from `main` into `gopika/sponsor-setup` as `543fbd9`.
+- **Conflicts:**
+  - `agents/package.json`: union of both sides. Ours: `@0gfoundation/0g-storage-ts-sdk 1.2.13`, `dotenv 16.6.1`, `ethers 6.13.1`. Main's: `mqtt ^5.10.4`, `ws ^8.21.3`, dev `@types/ws`. Main's `serve` and `fake-watcher` scripts kept.
+  - `package-lock.json`: took main's, then `npm install` added our exact pins on top. One `ethers@6.13.1` across the workspace.
+  - `agents/.env.example`: merged automatically (main's device and teleop sections plus our World/0G sections), then updated: compute default `router`, `ZEROG_ROUTER_KEY_STANDARD` added.
+- **Pre-existing type error on main** (`agents/src/tools/hand-vs-sim.ts`, `origin` possibly null) fixed with a local snapshot in `ed54d20`. `main` alone fails `npm run typecheck` with it.
+- `sim/` and `teleop/` are untouched: byte-identical to `origin/main`.
+- **Post-merge refill** (`deploy:escrow`): AGENT_G1 gas +0.00772, AGENT_2 +0.00033, robot G1 escrow +0.004. Deployer 0.2694 → 0.2570 0G. A leftover open bounty #22 (from a failed escrow run) was cancelled.
 
 ### Compute small-budget attempt (2026-11-06 20:45 IST, approved by Gopika)
 Goal: create the 0G Compute ledger at the **contract** minimum (0.1 0G) instead of the SDK's client-side 3 0G, via `zerog/scripts/fund-compute-direct.mts`, which calls LedgerManager directly.
