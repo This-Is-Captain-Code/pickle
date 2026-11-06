@@ -2,10 +2,12 @@
 
 **Pickle is a labor market where robots hire the help they need.** One pipeline,
 three intervention classes — **Physical** (hands, `BountyKind: 'physical'`),
-**Remote** (skill/teleop, `'teleop'`), **Machine** (robot↔robot services,
-`'robot'`) — judged across three tracks (World ID Agent Pass, Best Use of IDKit,
-0G Physical AI). Bounties end at **verified** — on-chain settlement is out of
-scope.
+**Remote** (skill/teleop, `'teleop'`), **Machine** (robot↔robot: the same
+physical bounty, claimed by another robot's agent with its wallet instead of a
+World-verified human) — judged across three tracks (World ID Agent Pass, Best
+Use of IDKit, 0G Physical AI). Bounties are escrowed and settled on 0G Galileo
+(`PickleEscrow`, `contracts/hardhat/`); the chain queue is non-blocking, so a
+chain failure never stalls the demo.
 
 ```
              Spectacles (WebXR sender)                      World App
@@ -33,7 +35,9 @@ scope.
 | `zerog/` | `DecisionEngine` (0G Compute) + `EpisodeLogger` (0G Storage) | World/0G dev |
 | `sim/` | Node MuJoCo Unitree G1 + browser viewer (ethtokyo port) | lead |
 | `teleop/` | Spectacles WebXR sender + relay + joint-mapping bridge (pinch port) | lead |
-| `firmware/` | SenseCAP Watcher: QR bounty poster + VBUS physical proof (Mumbai port) | lead |
+| `firmware/` | SenseCAP Watcher: QR bounty poster + VBUS physical proof + knob demo toggle (Mumbai port); the T-Deck runs the Mumbai firmware unchanged | lead |
+| `contracts/hardhat/` | `PickleEscrow.sol` (post → claim → settle, cancel/expire) + tests + deploy tooling | World/0G dev |
+| `site/` | Next.js landing (three interventions) + `/portal` job board | lead |
 
 ## How parallel work stays unblocked
 
