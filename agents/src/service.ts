@@ -12,10 +12,14 @@
 //
 // Providers are env-switched (mock today, World/0G live later).
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 import WebSocket from 'ws';
 import { ZeroGUnreachable, type Bounty, type VerifyOutcome } from '@pickle/shared';
 import { buildProviders } from './providers.js';
 import { Devices } from './devices.js';
+import { ADDRESSES_PATH, DEMO_PAYOUT, Escrow, escrowDeployed, humanHash } from './escrow.js';
+import { walletFromEnv } from './chain.js';
+import type { Wallet } from 'ethers';
 
 const env = (k: string, d = '') => process.env[k] ?? d;
 const BROKER_URL = env('BROKER_URL');
@@ -39,6 +43,41 @@ interface ActiveBounty {
   claimId?: string;
   claimedAt?: number;
   timer?: NodeJS.Timeout;
+  /** On-chain state: ops run sequentially in this queue, never blocking the UX. */
+  chainQ?: Promise<void>;
+  onchainId?: bigint;
+}
+
+// ── PickleEscrow (0G Galileo): the payout happens on-chain, non-blocking ──
+// ESCROW_DEMO=0 disables. Each device maps to an on-chain robot + its agent wallet.
+const CHAIN_ON = process.env.ESCROW_DEMO !== '0' && escrowDeployed();
+const escrow = CHAIN_ON ? new Escrow() : null;
+const EXPLORER = 'https://chainscan-galileo.0g.ai';
+// Claim window mirrors the service's pickup timeout so on-chain expiry stays in sync.
+const CLAIM_WINDOW_S = 170; // slightly under PICKUP_TIMEOUT so the on-chain deadline passes first
+const PAYOUT_ADDRESS = process.env.PAYOUT_ADDRESS || process.env.DEPLOYER_ADDRESS || '';
+const robotChain = new Map<string, { robotId: string; wallet: Wallet }>();
+if (CHAIN_ON) {
+  const robots = JSON.parse(readFileSync(ADDRESSES_PATH, 'utf8')).galileo.robots;
+  // device name -> on-chain robot. The G1 sim is robot G1; the Watcher is R2.
+  const map: Record<string, string> = { 'g1-sim-01': 'G1', 'watcher-01': 'R2' };
+  for (const [dev, name] of Object.entries(map)) {
+    if (robots[name]) robotChain.set(dev, { robotId: robots[name].id, wallet: walletFromEnv(`${robots[name].agentWallet}_PRIVATE_KEY`) });
+  }
+}
+
+/** Queue an on-chain op for this bounty: strictly ordered, failures logged, UX never waits. */
+function chainOp(pb: ActiveBounty, label: string, fn: () => Promise<string | void>) {
+  if (!CHAIN_ON) return;
+  pb.chainQ = (pb.chainQ ?? Promise.resolve())
+    .then(fn)
+    .then((hash) => log('chain', `${label} ✓${hash ? ` ${EXPLORER}/tx/${hash}` : ''}`))
+    .catch((e: any) => log('chain', `${label} FAILED (demo continues off-chain): ${e.shortMessage ?? e.message}`));
+}
+
+/** 0G Storage roots are bytes32; mock roots aren't — pass live roots through, hash anything else. */
+function asBytes32(root: string): string {
+  return /^0x[0-9a-fA-F]{64}$/.test(root) ? root : humanHash(root);
 }
 const byDevice = new Map<string, ActiveBounty>(); // one active bounty per robot
 const lastRssi = new Map<string, number>();
@@ -155,6 +194,16 @@ async function onPowerLoss(dev: string, data: Record<string, unknown>) {
   devices.cmd(dev, { cmd: 'say', text: 'SCAN TO SAVE ME' });
   devices.cmd(dev, { cmd: 'state', state: '*-*' }); // dying face, red poster
   log('bounty', `${bounty.id} posted on ${dev} — QR -> ${url}`);
+  const rc = robotChain.get(dev);
+  if (rc) {
+    bounty.payoutWei = DEMO_PAYOUT.toString();
+    chainOp(pb, `postBounty(${dev})`, async () => {
+      const r = await escrow!.postBounty(rc.wallet, rc.robotId, DEMO_PAYOUT, CLAIM_WINDOW_S);
+      pb.onchainId = escrow!.bountyIdFrom(r);
+      log('chain', `on-chain bounty #${pb.onchainId} — 0.001 0G escrowed from ${dev}'s balance`);
+      return r.hash;
+    });
+  }
 }
 
 // ---------- 2. claim (QR scanned) -> human verification -> CLAIMED ----------
@@ -184,6 +233,14 @@ async function onClaim(m: { claimId: string; bountyId: string; device?: string }
   pb.bounty.state = 'claimed'; pb.bounty.nullifier = outcome.nullifier;
   pb.claimedAt = Date.now();
   pb.timer && clearTimeout(pb.timer);
+  const rcc = robotChain.get(dev);
+  if (rcc && PAYOUT_ADDRESS) {
+    const hHash = humanHash(outcome.nullifier);
+    chainOp(pb, `claim(${dev})`, async () => {
+      if (pb.onchainId == null) throw new Error('no on-chain bounty id (postBounty failed?)');
+      return (await escrow!.claim(rcc.wallet, pb.onchainId, PAYOUT_ADDRESS, hHash)).hash;
+    });
+  }
 
   if (pb.bounty.kind === 'teleop') {
     pb.phase = 'in_progress';
@@ -210,6 +267,10 @@ async function onPowerRestored(pb: ActiveBounty, dev: string) {
     log('bounty', `${pb.bounty.id} withdrawn: power restored before any claim`);
     if (pb.claimId) ack(pb.claimId, 'rejected', { reason: 'Power was restored before the claim completed.' });
     pb.timer && clearTimeout(pb.timer);
+    if (robotChain.get(dev)) chainOp(pb, `cancel(${dev})`, async () => {
+      if (pb.onchainId == null) return;
+      return (await escrow!.cancel(robotChain.get(dev)!.wallet, pb.onchainId)).hash;
+    });
     devices.cmd(dev, { cmd: 'job' });
     devices.cmd(dev, { cmd: 'say', text: '' });
     devices.cmd(dev, { cmd: 'state', state: 'IDLE' });
@@ -225,7 +286,7 @@ async function onPowerRestored(pb: ActiveBounty, dev: string) {
       question: 'Telemetry after human intervention: external power restored, battery charging. Is the robot rescued?',
       options: ['fix_confirmed', 'still_stuck'],
     });
-    await providers.episodes.append({ ts: Date.now(), robotId: dev, bountyId: pb.bounty.id, decision: verdict, situation });
+    const epi = await providers.episodes.append({ ts: Date.now(), robotId: dev, bountyId: pb.bounty.id, decision: verdict, situation });
     log('0g', `verification=${verdict.choice} requestId=${verdict.requestId}`);
     if (verdict.choice !== 'fix_confirmed') { devices.cmd(dev, { cmd: 'say', text: 'not verified yet…' }); return; }
 
@@ -235,6 +296,15 @@ async function onPowerRestored(pb: ActiveBounty, dev: string) {
     devices.cmd(dev, { cmd: 'say', text: 'fix verified. thank you!' });
     if (pb.claimId) ack(pb.claimId, 'verified');
     log('bounty', `${pb.bounty.id} VERIFIED — bounty complete 🥒`);
+    const rcs = robotChain.get(dev);
+    if (rcs) {
+      chainOp(pb, `settle(${dev})`, async () => {
+        if (pb.onchainId == null) throw new Error('no on-chain bounty id');
+        const r = await escrow!.settle(rcs.wallet, pb.onchainId, verdict.requestId, asBytes32(epi.rootHash));
+        log('chain', `0.001 0G paid to ${PAYOUT_ADDRESS.slice(0, 10)}… — settle cites compute ${verdict.requestId.slice(0, 8)}… + storage root on-chain`);
+        return r.hash;
+      });
+    }
     setTimeout(() => { devices.cmd(dev, { cmd: 'job' }); devices.cmd(dev, { cmd: 'state', state: 'IDLE' }); byDevice.delete(dev); }, 10_000);
   }
 }
@@ -244,6 +314,15 @@ function expire(dev: string) {
   if (!pb || pb.phase === 'verified') return;
   log('bounty', `${pb.bounty.id} expired in phase ${pb.phase}`);
   if (pb.claimId) ack(pb.claimId, 'rejected', { reason: 'Bounty expired.' });
+  const rce = robotChain.get(dev);
+  if (rce) {
+    const claimed = pb.phase === 'awaiting_power' || pb.phase === 'in_progress';
+    chainOp(pb, `${claimed ? 'expire' : 'cancel'}(${dev})`, async () => {
+      if (pb.onchainId == null) return;
+      const r = claimed ? await escrow!.expire(rce.wallet, pb.onchainId) : await escrow!.cancel(rce.wallet, pb.onchainId);
+      return r.hash;
+    });
+  }
   if (pb.bounty.kind === 'teleop') {
     simPost('/api/teleop/release').catch(() => {});
     void setSimBounty(null);
@@ -309,7 +388,7 @@ async function onTeleopDone(evt: { robotId: string; telemetry?: Record<string, u
     question: 'Human teleop session ended and the robot passed its own resume check. Is the fix complete?',
     options: ['fix_confirmed', 'still_stuck'],
   });
-  await providers.episodes.append({ ts: Date.now(), robotId: dev, bountyId: pb.bounty.id, decision: verdict, situation });
+  const epi = await providers.episodes.append({ ts: Date.now(), robotId: dev, bountyId: pb.bounty.id, decision: verdict, situation });
   log('0g', `verification=${verdict.choice} requestId=${verdict.requestId}`);
   if (verdict.choice !== 'fix_confirmed') return;
 
@@ -318,6 +397,11 @@ async function onTeleopDone(evt: { robotId: string; telemetry?: Record<string, u
   if (pb.claimId) ack(pb.claimId, 'verified');
   await setSimBounty({ id: pb.bounty.id, title: pb.bounty.title, state: 'verified' });
   log('bounty', `${pb.bounty.id} VERIFIED — teleop bounty complete 🥒`);
+  const rct = robotChain.get(dev);
+  if (rct) chainOp(pb, `settle(${dev})`, async () => {
+    if (pb.onchainId == null) throw new Error('no on-chain bounty id');
+    return (await escrow!.settle(rct.wallet, pb.onchainId, verdict.requestId, asBytes32(epi.rootHash))).hash;
+  });
   setTimeout(() => { void setSimBounty(null); byDevice.delete(dev); }, 10_000);
 }
 
@@ -336,4 +420,4 @@ http.createServer((req, res) => {
 }).listen(AGENTS_PORT, () => log('http', `sim webhook on http://localhost:${AGENTS_PORT}/events/sim`));
 
 connectClaims();
-log('service', `pickle agents service up — claim base ${CLAIM_BASE_URL}, sim at ${SIM_URL}`);
+log('service', `pickle agents service up — claim base ${CLAIM_BASE_URL}, sim at ${SIM_URL}, escrow ${CHAIN_ON ? `LIVE on Galileo (${escrow!.address.slice(0, 10)}…, payouts to ${PAYOUT_ADDRESS.slice(0, 10)}…)` : 'off'}`);
