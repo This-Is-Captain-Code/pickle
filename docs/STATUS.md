@@ -228,3 +228,7 @@ Not touched: `world/src/idkit.ts`, `world/src/mock.ts`, `zerog/src/mock.ts`, `ag
 - **0G Storage:** the standard-mode testnet indexer URL is missing from every page.
 - **World:** the `selfie` acr values are documented but absent from both discovery docs. The step-up guide mixes `value` and `values`. Sandbox supports refresh/token-exchange; production does not.
 - **zerobot:** its peer range `@roamhq/wrtc ^0.8.0` excludes the latest 0.10.0.
+
+### Live pipeline rehearsal (2026-11-07, demo service)
+
+Full bounty pipeline PASS with WORLD_MODE=live + ZEROG_MODE=live through the actual agents service (not smoke scripts): power-loss -> 0G decision (post_physical_bounty, req 35792aa1) + episode on Storage (0x28c88be1...) -> claim page on a phone -> REAL World ID Proof of Human approved in World App (nullifier 0x07d15e0d05...) -> VBUS proof (device-only fake watcher, FAKE_DEVICE=1) -> 0G verdict (fix_confirmed, req 970e75a7) -> VERIFIED. The claim page now renders the World connectorURI (QR + open-in-World-App link). Remaining: same take on real Watcher hardware at the venue.

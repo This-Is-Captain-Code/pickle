@@ -11,6 +11,9 @@ import WebSocket from 'ws';
 const env = (k: string, d = '') => process.env[k] ?? d;
 const DEV = env('FAKE_DEV_ID', 'watcher-01');
 const AUTO = process.argv.includes('--auto') || env('FAKE_AUTO') === '1';
+// Device-only rehearsal: the fake plays the ROBOT (dies, then "gets plugged
+// in" shortly after the claim) while a real human claims on their phone.
+const DEVICE_ONLY = env('FAKE_DEVICE') === '1';
 const CLAIMS_WS_URL = env('CLAIMS_WS_URL', 'wss://pickle-hand-relay.pickle-delhi.workers.dev/claims');
 
 const log = (tag: string, msg: string) => console.log(`[${tag}] ${msg}`);
@@ -28,13 +31,19 @@ client.on('connect', () => {
   client.subscribe(`monaid/${DEV}/cmd`);
   log('fake', `${DEV} online (broker ok)`);
   setInterval(() => evt('heartbeat', { up: process.uptime() | 0, n: ++beats, rssi }), 5000);
-  if (AUTO) setTimeout(() => { log('fake', 'power cord yanked (VBUS down) -> dying on battery *-*'); evt('power', { on: false, charging: false, initial: false }); }, 2000);
+  if (AUTO || DEVICE_ONLY) setTimeout(() => { log('fake', 'power cord yanked (VBUS down) -> dying on battery *-*'); evt('power', { on: false, charging: false, initial: false }); }, 2000);
 });
 let beats = 0;
 
 client.on('message', (_t, buf) => {
   let m: any; try { m = JSON.parse(buf.toString()); } catch { return; }
-  if (m.cmd === 'state') { screen = m.state; log('screen', `█ ${screen} █`); }
+  if (m.cmd === 'state') {
+    screen = m.state;
+    log('screen', `█ ${screen} █`);
+    // Device-only mode: a few seconds after the (human) claim, "someone"
+    // plugs the robot in — the physical proof without the physical robot.
+    if (DEVICE_ONLY && m.state === 'CLAIMED') setTimeout(() => { log('fake', 'plugged into power (VBUS up)'); evt('power', { on: true, charging: true }); }, 6000);
+  }
   else if (m.cmd === 'job' && m.id) { log('screen', `job #${m.id}${m.payout ? ` ${m.payout}` : ''} ${m.url ? `QR[${m.url}]` : '(no QR)'}`); if (AUTO && m.url) scanQr(m.url); }
   else if (m.cmd === 'job') log('screen', 'job cleared');
   else if (m.cmd === 'say') log('screen', `💬 ${m.text}`);
