@@ -47,7 +47,7 @@ export function worldConfigFromEnv() {
 export function buildProviders(): Providers {
   const worldLive = env('WORLD_MODE', 'mock') === 'live';
   const zerogLive = env('ZEROG_MODE', 'mock') === 'live';
-  const zerogMode = env('ZEROG_COMPUTE_MODE', 'direct') as 'router' | 'direct';
+  const zerogMode = env('ZEROG_COMPUTE_MODE', 'router') as 'router' | 'direct';
 
   return {
     verifier: worldLive

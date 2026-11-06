@@ -41,7 +41,7 @@ const TESTS: Test[] = [
   {
     name: 'smoke:compute',
     file: 'compute.ts',
-    needs: (process.env.ZEROG_COMPUTE_MODE || 'direct') === 'direct'
+    needs: (process.env.ZEROG_COMPUTE_MODE || 'router') === 'direct'
       ? ['COMPUTE_WALLET_PRIVATE_KEY', 'ZEROG_ROUTER_KEY']
       : ['ZEROG_ROUTER_KEY'],
   },

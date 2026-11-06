@@ -31,7 +31,8 @@ const f3 = (a: number[] | null) => (a ? a.map((v) => v.toFixed(3)).join(',') : '
 const int = setInterval(async () => {
   const s = (await (await fetch('http://localhost:8787/api/state')).json()) as any;
   const q = s.robot.qpos as number[];
-  const off = wrist && origin ? wrist.map((v, i) => v - origin[i]) : null;
+  const o = origin; // snapshot: `origin` is reassigned in a callback, so TS can't narrow it inside the map
+  const off = wrist && o ? wrist.map((v, i) => v - o[i]) : null;
   const fresh = Date.now() - lastSeen < 500;
   log(
     `HAND ${fresh ? ' ' : '(LOST)'} raw[${f3(wrist)}] off[${f3(off)}]  ||  SIM Rarm sp=${q[22]} sr=${q[23]} el=${q[25]} wrist[${f3(s.robot.wrists.r)}]`,
