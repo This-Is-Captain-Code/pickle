@@ -17,9 +17,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = +(process.env.SIM_PORT || 8787);
 const TOKEN = process.env.SIM_TELEOP_TOKEN || 'dev-token';
 const WEBHOOK = process.env.AGENTS_WEBHOOK_URL || ''; // e.g. http://localhost:8090/events/sim
-// Demo default: stage the knock-box scenario shortly after boot, so starting
-// the sim lands on the teleop bounty. SIM_SCENARIO=none|obstacle|person|knock.
-const AUTO_SCENARIO = (process.env.SIM_SCENARIO ?? 'knock').toLowerCase();
+// Demo defaults: the sim stays in teleop — the human always has control
+// (SIM_MODE=auto restores the autonomous routine). A scenario can still be
+// staged at boot when running the bounty story: SIM_SCENARIO=knock|obstacle|person.
+const SIM_MODE = (process.env.SIM_MODE ?? 'teleop').toLowerCase();
+const AUTO_SCENARIO = (process.env.SIM_SCENARIO ?? 'none').toLowerCase();
 
 const sim = await Sim.create();
 const app = express();
@@ -133,7 +135,10 @@ setInterval(() => broadcast({ t: 'state', time: +sim.data.time.toFixed(3), poses
 process.on('uncaughtException', (e) => console.error('[sim] uncaught exception (kept running):', e?.stack || e));
 process.on('unhandledRejection', (e) => console.error('[sim] unhandled rejection (kept running):', e?.stack || e));
 server.listen(PORT, () => {
-  console.log(`pickle sim on http://localhost:${PORT}  (teleop token ${TOKEN === 'dev-token' ? 'dev-token (default)' : 'set'}; webhook ${WEBHOOK || 'off'}; scenario ${AUTO_SCENARIO})`);
+  console.log(`pickle sim on http://localhost:${PORT}  (teleop token ${TOKEN === 'dev-token' ? 'dev-token (default)' : 'set'}; webhook ${WEBHOOK || 'off'}; mode ${SIM_MODE}; scenario ${AUTO_SCENARIO})`);
+  // Always-teleop watchdog: whatever drops the sim back to auto (boot, reset,
+  // work done), control returns to the human within a second.
+  if (SIM_MODE === 'teleop') setInterval(() => { if (sim.mode === 'auto') sim.beginTeleop(true); }, 1000);
   const auto = { obstacle: () => sim.spawnObstacle(), person: () => sim.personEnter(), knock: () => sim.knockTarget() }[AUTO_SCENARIO];
   if (auto) {
     // Retry until it takes. For knock, the displaced-box check only runs in
