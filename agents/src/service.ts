@@ -169,6 +169,9 @@ async function onClaim(m: { claimId: string; bountyId: string; device?: string }
   let outcome: VerifyOutcome;
   try {
     const session = await providers.verifier.createClaimSession(pb.bounty.id);
+    // Live World ID: the human must open this in World App (QR on desktop,
+    // tap-through on the phone). The claim page renders it.
+    ack(m.claimId, 'verifying', { connectorURI: session.connectorURI });
     outcome = await providers.verifier.awaitOutcome(session.requestId);
   } catch (e: any) { outcome = { ok: false, code: 'error', detail: e.message }; }
 

@@ -27,8 +27,13 @@
   <h1>Pickle — robot bounty</h1>
   <div id="state" class="state wait">CLAIMING…</div>
   <div id="status">Registering your claim…</div>
+  <div id="world" style="display:none; flex-direction:column; align-items:center; gap:10px;">
+    <div id="world-qr" style="background:#fff; padding:10px; border-radius:10px;"></div>
+    <a id="world-link" href="#" style="color:#3fd68f; font-size:14px;">open in World App →</a>
+  </div>
   <div class="meta" id="meta"></div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 // Opened by scanning the QR on the stuck robot's screen.
 // Sends a claim into the relay room "claims"; the agents core picks it up,
@@ -56,7 +61,17 @@ if (!bountyId) {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     if (m.type !== 'claim_ack' || m.claimId !== claimId) return;
     acked = true;
-    if (m.status === 'verifying') show('wait', 'VERIFYING…', 'Proving you are a unique human…');
+    if (m.status === 'verifying') {
+      show('wait', 'VERIFYING…', 'Prove you are a unique human with World ID:');
+      if (m.connectorURI) {
+        const w = document.getElementById('world');
+        w.style.display = 'flex';
+        document.getElementById('world-qr').innerHTML = '';
+        if (window.QRCode) new QRCode(document.getElementById('world-qr'), { text: m.connectorURI, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+        document.getElementById('world-link').href = m.connectorURI;
+      }
+    }
+    if (m.status === 'claimed' || m.status === 'rejected' || m.status === 'verified') document.getElementById('world').style.display = 'none';
     else if (m.status === 'claimed') show('ok', 'YOURS ✓', `<b>${m.instruction || 'Plug the robot into power.'}</b>`);
     else if (m.status === 'verified') show('ok', 'VERIFIED 🥒', 'The robot\'s agent confirmed the fix. Bounty complete — thank you!');
     else if (m.status === 'rejected') show('err', 'REJECTED', m.reason || 'Verification failed or bounty already claimed.');
