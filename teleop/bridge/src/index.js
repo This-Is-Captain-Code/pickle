@@ -90,8 +90,21 @@ const PARK_POSE = {
   left_elbow: 1.3, right_elbow: 1.3, waist_pitch: 0,
 };
 
+// Palm centroid: wrist + the five metacarpals. The tracker re-estimates the
+// wrist as fingers articulate (1-2 cm wander on a "still" hand); the palm
+// centroid is the rigid part and barely moves.
+function palmCenter(joints) {
+  const idx = [0, 1, 6, 11, 16, 21];
+  let n = 0, p = [0, 0, 0];
+  for (const i of idx) {
+    const j = joints?.[i]?.pos;
+    if (j) { p = add(p, j); n++; }
+  }
+  return n >= 2 ? scale(p, 1 / n) : joints?.[0]?.pos ?? null;
+}
+
 function updateHand(h, data, t) {
-  const wrist = data?.joints?.[0]?.pos;
+  const wrist = palmCenter(data?.joints);
   if (!wrist) {
     if (t - h.lastSeen > LOST_RESET_MS) { h.origin = null; h.calib = []; h.offset = null; h.basis = null; }
     return;
@@ -118,7 +131,14 @@ function updateHand(h, data, t) {
     h.fy.filter(wrist[1] - h.origin[1], t),
     h.fz.filter(wrist[2] - h.origin[2], t),
   ];
-  h.abs = add(h.origin, h.offset); // filtered absolute wrist (XR space), for IK
+  h.abs = add(h.origin, h.offset); // filtered absolute palm (XR space), for IK
+  // Stillness gate: track recent travel; below the threshold the send loop
+  // goes fully silent for this hand, so a resting hand cannot twitch the robot.
+  h.trail = h.trail ?? [];
+  h.trail.push({ at: Date.now(), p: [...h.offset] });
+  while (h.trail.length && Date.now() - h.trail[0].at > 350) h.trail.shift();
+  const first = h.trail[0]?.p ?? h.offset;
+  h.still = norm(sub(h.offset, first)) < 0.005;
   // pinch gesture with hysteresis; a right-hand pinch toggles pick/drop
   const thumb = data.joints[5]?.pos, index = data.joints[10]?.pos;
   if (thumb && index) {
@@ -263,6 +283,7 @@ setInterval(() => {
   }
   for (const h of [hands.left, hands.right]) {
     if (!h.seenWall || now - h.seenWall > 400) continue; // stale hand: don't steer with old data
+    if (h.still) continue; // resting hand: send nothing at all
     const t = USE_IK ? armTargetsIK(h) : armTargets(h);
     if (!t) continue;
     if (t._lean != null) maxLean = Math.max(maxLean ?? 0, t._lean);
