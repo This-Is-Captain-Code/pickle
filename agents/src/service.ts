@@ -5,14 +5,18 @@
 //   scan ──claim.html──▶ relay room "claims" ──▶ verify human ──▶ CLAIMED
 //   human plugs it in (VBUS↑) ──▶ 0G verdict ──▶ VERIFIED
 //
-// Teleop (MuJoCo G1 sim):
+// Teleop (MuJoCo G1 sim, no autonomy — the sim announces its standing job at boot):
 //   sim stuck ──webhook──▶ 0G decision ──▶ bounty + QR in the sim viewer
-//   claim ──▶ verify human ──▶ teleop session unlocked (sim /api/teleop/begin)
-//   human fixes it via Spectacles ──▶ sim resume check ──webhook──▶ 0G verdict ──▶ VERIFIED
+//   claim ──▶ verify human ──▶ CLAIMED (arms are always live; the claim is what gets rewarded)
+//   human sweeps the box off via Spectacles ──▶ box on floor ──webhook──▶ 0G verdict ──▶ VERIFIED
 //
-// Providers are env-switched (mock today, World/0G live later).
+// Both paths escrow the demo payout on 0G Galileo (PickleEscrow: post → claim → settle),
+// non-blocking: a chain failure is logged and the off-chain demo continues.
+// Providers are env-switched (WORLD_MODE / ZEROG_MODE: mock | live).
 import http from 'node:http';
-import { readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { ZeroGUnreachable, type Bounty, type VerifyOutcome } from '@pickle/shared';
 import { buildProviders } from './providers.js';
@@ -32,7 +36,14 @@ const PICKUP_TIMEOUT_MS = 3 * 60_000;
 
 if (!BROKER_URL) { console.error('BROKER_URL is required (see agents/.env.example)'); process.exit(1); }
 
-const log = (tag: string, msg: string) => console.log(`[${tag}] ${msg}`);
+// Console + agents/logs/service.log (the file is the demo's post-mortem record; stdout capture can be lossy).
+const SERVICE_LOG = join(dirname(fileURLToPath(import.meta.url)), '..', 'logs', 'service.log');
+mkdirSync(dirname(SERVICE_LOG), { recursive: true });
+const log = (tag: string, msg: string) => {
+  const line = `[${tag}] ${msg}`;
+  console.log(line);
+  try { appendFileSync(SERVICE_LOG, `${new Date().toISOString()} ${line}\n`); } catch { /* best effort */ }
+};
 const providers = buildProviders();
 const devices = new Devices(BROKER_URL, env('BROKER_USER', 'bridge'), env('BROKER_PASS'));
 
@@ -80,6 +91,7 @@ function asBytes32(root: string): string {
   return /^0x[0-9a-fA-F]{64}$/.test(root) ? root : humanHash(root);
 }
 const byDevice = new Map<string, ActiveBounty>(); // one active bounty per robot
+const deciding = new Set<string>(); // robots whose (slow, live) 0G decision is in flight — no second bounty meanwhile
 const lastRssi = new Map<string, number>();
 
 async function simPost(path: string, body: Record<string, unknown> = {}) {
@@ -136,7 +148,10 @@ devices.on('evt', (evt) => {
   if (evt.kind === 'heartbeat' && typeof evt.data.rssi === 'number') lastRssi.set(evt.dev, evt.data.rssi);
   if (evt.kind === 'crash') log('robot', `${evt.dev} crash event (ignored — power loss is the trigger now)`);
   if (evt.kind === 'power') {
-    if (!pb && evt.data.on === false) onPowerLoss(evt.dev, evt.data).catch((e) => log('agent', `power-loss handling failed: ${e.message}`));
+    if (!pb && !deciding.has(evt.dev) && evt.data.on === false) {
+      deciding.add(evt.dev);
+      onPowerLoss(evt.dev, evt.data).catch((e) => log('agent', `power-loss handling failed: ${e.message}`)).finally(() => deciding.delete(evt.dev));
+    }
     if (pb && evt.data.on === true) onPowerRestored(pb, evt.dev).catch((e) => log('agent', `power-restore handling failed: ${e.message}`));
   }
 });
@@ -194,16 +209,20 @@ async function onPowerLoss(dev: string, data: Record<string, unknown>) {
   devices.cmd(dev, { cmd: 'say', text: 'SCAN TO SAVE ME' });
   devices.cmd(dev, { cmd: 'state', state: '*-*' }); // dying face, red poster
   log('bounty', `${bounty.id} posted on ${dev} — QR -> ${url}`);
+  postOnChain(dev, pb);
+}
+
+// Escrow the demo payout from the robot's own wallet (non-blocking; off-chain demo continues on failure).
+function postOnChain(dev: string, pb: ActiveBounty) {
   const rc = robotChain.get(dev);
-  if (rc) {
-    bounty.payoutWei = DEMO_PAYOUT.toString();
-    chainOp(pb, `postBounty(${dev})`, async () => {
-      const r = await escrow!.postBounty(rc.wallet, rc.robotId, DEMO_PAYOUT, CLAIM_WINDOW_S);
-      pb.onchainId = escrow!.bountyIdFrom(r);
-      log('chain', `on-chain bounty #${pb.onchainId} — 0.001 0G escrowed from ${dev}'s balance`);
-      return r.hash;
-    });
-  }
+  if (!rc) return;
+  pb.bounty.payoutWei = DEMO_PAYOUT.toString();
+  chainOp(pb, `postBounty(${dev})`, async () => {
+    const r = await escrow!.postBounty(rc.wallet, rc.robotId, DEMO_PAYOUT, CLAIM_WINDOW_S);
+    pb.onchainId = escrow!.bountyIdFrom(r);
+    log('chain', `on-chain bounty #${pb.onchainId} — 0.001 0G escrowed from ${dev}'s balance`);
+    return r.hash;
+  });
 }
 
 // ---------- 2. claim (QR scanned) -> human verification -> CLAIMED ----------
@@ -245,9 +264,10 @@ async function onClaim(m: { claimId: string; bountyId: string; device?: string }
   if (pb.bounty.kind === 'teleop') {
     pb.phase = 'in_progress';
     pb.timer = setTimeout(() => expire(dev), 10 * 60_000);
-    try { await simPost('/api/teleop/begin'); } catch (e: any) { log('sim', `teleop begin failed: ${e.message}`); }
+    // Always-teleop sims are already unlocked (409 "not stuck"); only log real failures.
+    try { await simPost('/api/teleop/begin'); } catch (e: any) { if (!/not stuck/.test(e.message)) log('sim', `teleop begin failed: ${e.message}`); }
     await setSimBounty({ id: pb.bounty.id, title: pb.bounty.title, state: 'claimed' });
-    ack(m.claimId, 'claimed', { instruction: 'Robot unlocked — you are in control. Sweep your arm to knock the blockage off the feeder, then press ✅ work done.' });
+    ack(m.claimId, 'claimed', { instruction: 'You are in control of the arms. Sweep the box off the table — the job completes the moment it hits the floor.' });
     log('world', `claimed by unique human ${outcome.nullifier.slice(0, 12)}… — teleop session unlocked`);
   } else {
     pb.phase = 'awaiting_power';
@@ -339,17 +359,30 @@ async function setSimBounty(b: Record<string, unknown> | null) {
 }
 
 // Sim reported stuck -> same pipeline as the Watcher, but the fix is a teleop session.
-async function onSimStuck(evt: { robotId: string; reason: string; title?: string; detail?: string; telemetry?: Record<string, unknown>; resumeCondition?: string }) {
+type SimStuckEvent = { robotId: string; reason: string; title?: string; detail?: string; telemetry?: Record<string, unknown>; resumeCondition?: string };
+async function onSimStuck(evt: SimStuckEvent) {
   const dev = evt.robotId || 'g1-sim-01';
-  if (byDevice.has(dev)) return;
+  // The sim re-announces its job until acknowledged; one bounty per robot at a
+  // time, including while the (slow, live) 0G decision is still in flight.
+  if (byDevice.has(dev) || deciding.has(dev)) return;
+  deciding.add(dev);
+  try { await decideSimStuck(dev, evt); } finally { deciding.delete(dev); }
+}
+async function decideSimStuck(dev: string, evt: SimStuckEvent) {
   log('robot', `${dev} stuck: ${evt.title ?? evt.reason}`);
-  const situation = { stuckReason: evt.reason, detail: evt.detail, resumeCondition: evt.resumeCondition, ...(evt.telemetry ?? {}) };
+  const situation = {
+    stuckReason: evt.reason, detail: evt.detail, resumeCondition: evt.resumeCondition,
+    selfRecovery: 'impossible — this robot has no autonomous policy for this task; its arms only move under human teleoperation',
+    owner: 'unreachable (away from site)',
+    bountyMarket: 'available — verified humans can take remote control of the arms within seconds',
+    ...(evt.telemetry ?? {}),
+  };
 
   let decision;
   try {
     decision = await providers.engine.decide({
       robotId: dev, situation,
-      question: 'Robot is stuck mid-task and needs human dexterity. Choose the response.',
+      question: 'Robot is stuck mid-task and needs human dexterity. Choose the response that restores operation fastest.',
       options: ['post_teleop_bounty', 'wait_and_retry', 'alert_owner'],
     });
   } catch (err) {
@@ -375,6 +408,7 @@ async function onSimStuck(evt: { robotId: string; reason: string; title?: string
   publishGo(url);
   await setSimBounty({ id: bounty.id, title: bounty.title, url, state: 'open' });
   log('bounty', `${bounty.id} posted on ${dev} (teleop) — QR -> ${url}`);
+  postOnChain(dev, pb);
 }
 
 // Sim's own resume check passed and the robot went back to work -> verify.
@@ -420,4 +454,6 @@ http.createServer((req, res) => {
 }).listen(AGENTS_PORT, () => log('http', `sim webhook on http://localhost:${AGENTS_PORT}/events/sim`));
 
 connectClaims();
+// A bounty overlay left by a previous service instance is dead to us — clear it so the sim re-announces.
+setSimBounty(null).catch(() => {});
 log('service', `pickle agents service up — claim base ${CLAIM_BASE_URL}, sim at ${SIM_URL}, escrow ${CHAIN_ON ? `LIVE on Galileo (${escrow!.address.slice(0, 10)}…, payouts to ${PAYOUT_ADDRESS.slice(0, 10)}…)` : 'off'}`);

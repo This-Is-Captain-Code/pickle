@@ -133,28 +133,76 @@ sim.on('stuck', async (info) => {
   }
 });
 
+// ---------- the standing teleop job (no autonomy): "knock the box off" ----------
+// Announced to the agents core as a stuck event at boot and after every
+// completion, so a bounty is always open for the next human.
+let announced = false;
+async function announceJob() {
+  const event = {
+    type: 'stuck', robotId: 'g1-sim-01', reason: 'box_misplaced',
+    title: 'Bad box on my table — knock it off',
+    detail: 'A box I cannot grasp is sitting on my work table. Take control of my arms and sweep it off onto the floor.',
+    urgency: 'low',
+    telemetry: { box: sim.boxPos().map((v) => +v.toFixed(3)), mode: sim.mode, time_s: +sim.data.time.toFixed(1) },
+    actions: [], resumeCondition: 'box on the floor',
+  };
+  broadcast({ t: 'stuck', event });
+  if (!WEBHOOK) return;
+  // Boot order is free: keep knocking until the agents core answers. The core
+  // dedupes by robot, so a repeat while a bounty is open is harmless.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(event) });
+      if (res.ok) return;
+      console.error(`[webhook] agents core answered ${res.status}`);
+    } catch (e) { if (attempt === 1 || attempt % 12 === 0) console.error('[webhook] agents core unreachable, retrying:', e.message); }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+}
+// If the core restarted (or never heard us), the overlay stays empty: re-announce.
+setInterval(() => { if (announced && !bounty && !bountyDone) announceJob(); }, 20_000);
+
 // ---------- main loop: 60 Hz physics, 30 Hz state stream ----------
 let last = process.hrtime.bigint();
-let bountyDone = false;
+// Teleop win condition: the box hits the floor -> BOUNTY COMPLETE, then
+// auto-restage after a few seconds so the demo loops. The win only arms once
+// the box has sat on the table for a second: a box restaged onto a still-
+// outstretched arm just tumbles off again, and that must not count (or chain
+// completions). Unarmed falls simply restage until the box settles.
+let bountyDone = false, restaging = false, boxArmed = false, onTableSince = null;
+function restageBox() {
+  restaging = true;
+  setTimeout(() => {
+    if (BOX_SPOT.length === 3 && BOX_SPOT.every(Number.isFinite)) {
+      const b = sim.boxes[sim.current];
+      sim.placeFree(b.qadr, b.dadr, BOX_SPOT);
+    }
+    if (bountyDone) broadcast({ t: 'bounty_reset' });
+    bountyDone = false; boxArmed = false; onTableSince = null; restaging = false;
+  }, 6000);
+}
 setInterval(() => {
   const now = process.hrtime.bigint();
   const dt = Math.min(Number(now - last) / 1e9, 0.1); last = now;
   sim.advance(dt);
-  // Teleop win condition: the box hits the floor -> BOUNTY COMPLETE, then
-  // auto-restage after a few seconds so the demo loops.
-  if (!bountyDone && sim.mode === 'teleop' && !sim.held && sim.boxPos()[2] < 0.3) {
+  if (restaging || sim.mode !== 'teleop') return;
+  const bz = sim.boxPos()[2];
+  if (bz > 0.8) { onTableSince ??= Date.now(); if (!boxArmed && Date.now() - onTableSince > 1000) boxArmed = true; }
+  else onTableSince = null;
+  if (bz < 0.3 && !sim.held) {
+    if (!boxArmed) { console.log('[demo] box fell before it settled (arm in the spot?) — restaging'); restageBox(); return; }
     bountyDone = true;
     broadcast({ t: 'bounty_complete' });
     broadcast({ t: 'toast', level: 'ok', msg: 'BOUNTY COMPLETE 🥒' });
     console.log('[demo] bounty complete — box on the floor');
-    setTimeout(() => {
-      if (BOX_SPOT.length === 3 && BOX_SPOT.every(Number.isFinite)) {
-        const b = sim.boxes[sim.current];
-        sim.placeFree(b.qadr, b.dadr, BOX_SPOT);
-      }
-      bountyDone = false;
-      broadcast({ t: 'bounty_reset' });
-    }, 6000);
+    // Tell the agent the job is done (it verifies + settles if a human claimed).
+    if (WEBHOOK) {
+      const telemetry = { box_on_floor: true, box: sim.boxPos().map((v) => +v.toFixed(3)), time_s: +sim.data.time.toFixed(1) };
+      fetch(WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'teleop_done', robotId: 'g1-sim-01', telemetry }) })
+        .catch((e) => console.error('[webhook] agents core unreachable:', e.message));
+    }
+    restageBox();
+    setTimeout(announceJob, 13000); // next human, next bounty
   }
 }, 1000 / 60);
 setInterval(() => broadcast({ t: 'state', time: +sim.data.time.toFixed(3), poses: sim.poses(), robot: sim.status() }), 1000 / 30);
@@ -165,7 +213,8 @@ server.listen(PORT, () => {
   console.log(`pickle sim on http://localhost:${PORT}  (teleop token ${TOKEN === 'dev-token' ? 'dev-token (default)' : 'set'}; webhook ${WEBHOOK || 'off'}; mode ${SIM_MODE}; scenario ${AUTO_SCENARIO})`);
   // Always-teleop watchdog: whatever drops the sim back to auto (boot, reset,
   // work done), control returns to the human within a second — with the box
-  // staged at the comfortable teleop spot.
+  // staged at the comfortable teleop spot. The first takeover also announces
+  // the standing job to the agent (no autonomy needed to "get stuck").
   if (SIM_MODE === 'teleop') setInterval(() => {
     if (sim.mode !== 'auto') return;
     sim.beginTeleop(true);
@@ -174,6 +223,7 @@ server.listen(PORT, () => {
       const b = sim.boxes[sim.current];
       sim.placeFree(b.qadr, b.dadr, BOX_SPOT);
     }
+    if (!announced) { announced = true; setTimeout(announceJob, 2000); }
   }, 1000);
   const auto = { obstacle: () => sim.spawnObstacle(), person: () => sim.personEnter(), knock: () => sim.knockTarget() }[AUTO_SCENARIO];
   if (auto) {
