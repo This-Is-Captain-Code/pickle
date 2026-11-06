@@ -25,7 +25,15 @@ app.use(express.json());
 const requireToken = (req, res, next) =>
   (req.body?.token || req.query.token) === TOKEN ? next() : res.status(403).json({ error: 'bad token' });
 
-app.get('/api/state', (_req, res) => res.json({ robot: sim.status() }));
+app.get('/api/state', (_req, res) => res.json({ robot: sim.status(), bounty }));
+
+// The agents core attaches/clears the bounty shown by the viewer (QR overlay).
+let bounty = null;
+app.post('/api/bounty', requireToken, (req, res) => {
+  bounty = req.body.bounty ?? null;
+  broadcast({ t: 'bounty', bounty });
+  res.json({ ok: true });
+});
 
 // Scenario controls — the "world" acting on the robot (demo triggers).
 app.post('/api/scenario/:name', (req, res) => {
@@ -42,11 +50,22 @@ app.post('/api/teleop/begin', requireToken, (_req, res) => {
   broadcast({ t: 'toast', level: 'ok', msg: 'Teleop session started.' });
   res.json({ ok: true, robot: sim.status() });
 });
-app.post('/api/teleop/end', requireToken, (_req, res) => {
+app.post('/api/teleop/end', requireToken, async (_req, res) => {
+  const before = sim.status(); // post-fix, pre-resume snapshot: what the human left behind
   const blocker = sim.endTeleop();
   if (blocker) return res.status(409).json({ error: blocker, robot: sim.status() });
   broadcast({ t: 'toast', level: 'ok', msg: 'Teleop done — robot back to work.' });
   res.json({ ok: true, robot: sim.status() });
+  if (WEBHOOK) {
+    const telemetry = {
+      obstacle_in_path: before.obstacleInPath, person_near: before.personNear,
+      target_displaced: before.targetDisplaced, holding: before.holding,
+      contacts: before.ncon, actions_done: before.actionsDone, time_s: before.time,
+    };
+    try {
+      await fetch(WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'teleop_done', robotId: 'g1-sim-01', telemetry }) });
+    } catch (e) { console.error('[webhook] agents core unreachable:', e.message); }
+  }
 });
 app.post('/api/teleop/release', requireToken, (_req, res) => { sim.releaseToPool(); res.json({ ok: true }); });
 app.post('/api/action', requireToken, (req, res) => {

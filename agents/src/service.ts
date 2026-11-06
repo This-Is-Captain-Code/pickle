@@ -1,11 +1,17 @@
-// Pickle agents service: the long-running orchestrator for physical bounties.
+// Pickle agents service: the long-running orchestrator for robot bounties.
 //
-//   Watcher crash ──MQTT──▶ 0G decision ──▶ bounty + QR on the robot's screen
-//   Spectacles scans QR ──claim.html──▶ relay room "claims" ──▶ verify human ──▶ CLAIMED
-//   human unplugs (VBUS↓ = picked up) … replugs (VBUS↑ = placed) ──▶ 0G verdict ──▶ PAID
+// Physical (SenseCAP Watcher):
+//   power lost ──MQTT──▶ 0G decision ──▶ bounty + QR on the robot's screen
+//   scan ──claim.html──▶ relay room "claims" ──▶ verify human ──▶ CLAIMED
+//   human plugs it in (VBUS↑) ──▶ 0G verdict ──▶ VERIFIED
 //
-// Providers are env-switched (mock today, World/0G live later) — same contract
-// as the one-shot demo in index.ts. Escrow settle stays stubbed until contracts/.
+// Teleop (MuJoCo G1 sim):
+//   sim stuck ──webhook──▶ 0G decision ──▶ bounty + QR in the sim viewer
+//   claim ──▶ verify human ──▶ teleop session unlocked (sim /api/teleop/begin)
+//   human fixes it via Spectacles ──▶ sim resume check ──webhook──▶ 0G verdict ──▶ VERIFIED
+//
+// Providers are env-switched (mock today, World/0G live later).
+import http from 'node:http';
 import WebSocket from 'ws';
 import { ZeroGUnreachable, type Bounty, type VerifyOutcome } from '@pickle/shared';
 import { buildProviders } from './providers.js';
@@ -15,6 +21,9 @@ const env = (k: string, d = '') => process.env[k] ?? d;
 const BROKER_URL = env('BROKER_URL');
 const CLAIMS_WS_URL = env('CLAIMS_WS_URL', 'wss://pickle-hand-relay.pickle-delhi.workers.dev/claims');
 const CLAIM_BASE_URL = env('CLAIM_BASE_URL', 'https://pickle-hand-relay.pickle-delhi.workers.dev');
+const SIM_URL = env('SIM_URL', 'http://localhost:8787');
+const SIM_TOKEN = env('SIM_TELEOP_TOKEN', 'dev-token');
+const AGENTS_PORT = +env('AGENTS_PORT', '8090');
 const PICKUP_TIMEOUT_MS = 3 * 60_000;
 
 if (!BROKER_URL) { console.error('BROKER_URL is required (see agents/.env.example)'); process.exit(1); }
@@ -23,16 +32,25 @@ const log = (tag: string, msg: string) => console.log(`[${tag}] ${msg}`);
 const providers = buildProviders();
 const devices = new Devices(BROKER_URL, env('BROKER_USER', 'bridge'), env('BROKER_PASS'));
 
-type Phase = 'open' | 'verifying' | 'awaiting_power' | 'verified';
-interface PhysicalBounty {
+type Phase = 'open' | 'verifying' | 'awaiting_power' | 'in_progress' | 'verified';
+interface ActiveBounty {
   bounty: Bounty;
   phase: Phase;
   claimId?: string;
   claimedAt?: number;
   timer?: NodeJS.Timeout;
 }
-const byDevice = new Map<string, PhysicalBounty>(); // one active bounty per device
+const byDevice = new Map<string, ActiveBounty>(); // one active bounty per robot
 const lastRssi = new Map<string, number>();
+
+async function simPost(path: string, body: Record<string, unknown> = {}) {
+  const res = await fetch(`${SIM_URL}${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: SIM_TOKEN, ...body }),
+  });
+  if (!res.ok) throw new Error(`${path} -> ${res.status} ${(await res.json().catch(() => ({})) as any).error ?? ''}`);
+  return res.json();
+}
 
 // ---------- claims room (the claim page talks to us through the relay) ----------
 // The relay DO can drop idle sockets, and a send into a dying socket vanishes
@@ -117,7 +135,7 @@ async function onPowerLoss(dev: string, data: Record<string, unknown>) {
     state: 'open',
     createdAt: Date.now(), expiresAt: Date.now() + 10 * 60_000,
   };
-  const pb: PhysicalBounty = { bounty, phase: 'open' };
+  const pb: ActiveBounty = { bounty, phase: 'open' };
   byDevice.set(dev, pb);
   pb.timer = setTimeout(() => expire(dev), 10 * 60_000);
 
@@ -151,18 +169,29 @@ async function onClaim(m: { claimId: string; bountyId: string; device?: string }
     return;
   }
   pb.bounty.state = 'claimed'; pb.bounty.nullifier = outcome.nullifier;
-  pb.phase = 'awaiting_power'; pb.claimedAt = Date.now();
+  pb.claimedAt = Date.now();
   pb.timer && clearTimeout(pb.timer);
-  pb.timer = setTimeout(() => expire(dev), PICKUP_TIMEOUT_MS);
-  ack(m.claimId, 'claimed', { instruction: 'Plug the robot into power.' });
-  devices.cmd(dev, { cmd: 'job', id: pb.bounty.id }); // no url -> QR comes down
-  devices.cmd(dev, { cmd: 'state', state: 'CLAIMED' });
-  devices.cmd(dev, { cmd: 'say', text: 'plug me in!' });
-  log('world', `claimed by unique human ${outcome.nullifier.slice(0, 12)}… — waiting for power (VBUS up)`);
+
+  if (pb.bounty.kind === 'teleop') {
+    pb.phase = 'in_progress';
+    pb.timer = setTimeout(() => expire(dev), 10 * 60_000);
+    try { await simPost('/api/teleop/begin'); } catch (e: any) { log('sim', `teleop begin failed: ${e.message}`); }
+    await setSimBounty({ id: pb.bounty.id, title: pb.bounty.title, state: 'claimed' });
+    ack(m.claimId, 'claimed', { instruction: 'Robot unlocked — you are in control. Clear the obstacle (Spectacles hands or the viewer), then press ✅ work done.' });
+    log('world', `claimed by unique human ${outcome.nullifier.slice(0, 12)}… — teleop session unlocked`);
+  } else {
+    pb.phase = 'awaiting_power';
+    pb.timer = setTimeout(() => expire(dev), PICKUP_TIMEOUT_MS);
+    ack(m.claimId, 'claimed', { instruction: 'Plug the robot into power.' });
+    devices.cmd(dev, { cmd: 'job', id: pb.bounty.id }); // no url -> QR comes down
+    devices.cmd(dev, { cmd: 'state', state: 'CLAIMED' });
+    devices.cmd(dev, { cmd: 'say', text: 'plug me in!' });
+    log('world', `claimed by unique human ${outcome.nullifier.slice(0, 12)}… — waiting for power (VBUS up)`);
+  }
 }
 
 // ---------- 3. physical proof: power comes back ----------
-async function onPowerRestored(pb: PhysicalBounty, dev: string) {
+async function onPowerRestored(pb: ActiveBounty, dev: string) {
   if (pb.phase === 'open' || pb.phase === 'verifying') {
     // Someone plugged it in without claiming — robot is fine, bounty is moot.
     log('bounty', `${pb.bounty.id} withdrawn: power restored before any claim`);
@@ -202,10 +231,96 @@ function expire(dev: string) {
   if (!pb || pb.phase === 'verified') return;
   log('bounty', `${pb.bounty.id} expired in phase ${pb.phase}`);
   if (pb.claimId) ack(pb.claimId, 'rejected', { reason: 'Bounty expired.' });
-  devices.cmd(dev, { cmd: 'job' });
-  devices.cmd(dev, { cmd: 'state', state: 'IDLE' });
+  if (pb.bounty.kind === 'teleop') {
+    simPost('/api/teleop/release').catch(() => {});
+    void setSimBounty(null);
+  } else {
+    devices.cmd(dev, { cmd: 'job' });
+    devices.cmd(dev, { cmd: 'state', state: 'IDLE' });
+  }
   byDevice.delete(dev);
 }
 
+// ---------- sim robot (teleop bounties) ----------
+async function setSimBounty(b: Record<string, unknown> | null) {
+  try { await simPost('/api/bounty', { bounty: b }); } catch (e: any) { log('sim', `bounty overlay update failed: ${e.message}`); }
+}
+
+// Sim reported stuck -> same pipeline as the Watcher, but the fix is a teleop session.
+async function onSimStuck(evt: { robotId: string; reason: string; title?: string; detail?: string; telemetry?: Record<string, unknown>; resumeCondition?: string }) {
+  const dev = evt.robotId || 'g1-sim-01';
+  if (byDevice.has(dev)) return;
+  log('robot', `${dev} stuck: ${evt.title ?? evt.reason}`);
+  const situation = { stuckReason: evt.reason, detail: evt.detail, resumeCondition: evt.resumeCondition, ...(evt.telemetry ?? {}) };
+
+  let decision;
+  try {
+    decision = await providers.engine.decide({
+      robotId: dev, situation,
+      question: 'Robot is stuck mid-task and needs human dexterity. Choose the response.',
+      options: ['post_teleop_bounty', 'wait_and_retry', 'alert_owner'],
+    });
+  } catch (err) {
+    if (err instanceof ZeroGUnreachable) { log('safe-stop', `0G unreachable — ${dev} stays halted, owner queued`); return; }
+    throw err;
+  }
+  const receipt = await providers.episodes.append({ ts: Date.now(), robotId: dev, decision, situation });
+  log('0g', `decision=${decision.choice} requestId=${decision.requestId} episode=${receipt.rootHash.slice(0, 14)}…`);
+  if (decision.choice !== 'post_teleop_bounty') { log('agent', `decision was ${decision.choice}, no bounty`); return; }
+
+  const bounty: Bounty = {
+    id: `b${Date.now().toString(36)}`,
+    kind: 'teleop', robotId: dev,
+    title: evt.title ?? 'Take control and free me', reason: evt.reason,
+    payoutWei: '0', state: 'open',
+    createdAt: Date.now(), expiresAt: Date.now() + 10 * 60_000,
+  };
+  const pb: ActiveBounty = { bounty, phase: 'open' };
+  byDevice.set(dev, pb);
+  pb.timer = setTimeout(() => expire(dev), 10 * 60_000);
+
+  const url = `${CLAIM_BASE_URL}/claim.html?b=${bounty.id}&d=${dev}`;
+  publishGo(url);
+  await setSimBounty({ id: bounty.id, title: bounty.title, url, state: 'open' });
+  log('bounty', `${bounty.id} posted on ${dev} (teleop) — QR -> ${url}`);
+}
+
+// Sim's own resume check passed and the robot went back to work -> verify.
+async function onTeleopDone(evt: { robotId: string; telemetry?: Record<string, unknown> }) {
+  const dev = evt.robotId || 'g1-sim-01';
+  const pb = byDevice.get(dev);
+  if (!pb || pb.phase !== 'in_progress') { log('agent', `teleop_done for ${dev} ignored (no in-progress bounty)`); return; }
+  const situation = { proof: 'sim_resume_check', ...(evt.telemetry ?? {}) };
+  const verdict = await providers.engine.decide({
+    robotId: dev, situation,
+    question: 'Human teleop session ended and the robot passed its own resume check. Is the fix complete?',
+    options: ['fix_confirmed', 'still_stuck'],
+  });
+  await providers.episodes.append({ ts: Date.now(), robotId: dev, bountyId: pb.bounty.id, decision: verdict, situation });
+  log('0g', `verification=${verdict.choice} requestId=${verdict.requestId}`);
+  if (verdict.choice !== 'fix_confirmed') return;
+
+  pb.phase = 'verified'; pb.bounty.state = 'verified';
+  pb.timer && clearTimeout(pb.timer);
+  if (pb.claimId) ack(pb.claimId, 'verified');
+  await setSimBounty({ id: pb.bounty.id, title: pb.bounty.title, state: 'verified' });
+  log('bounty', `${pb.bounty.id} VERIFIED — teleop bounty complete 🥒`);
+  setTimeout(() => { void setSimBounty(null); byDevice.delete(dev); }, 10_000);
+}
+
+// Webhook listener: the sim POSTs stuck + teleop_done events here.
+http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/events/sim') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+      let evt: any; try { evt = JSON.parse(body); } catch { return; }
+      if (evt.type === 'stuck') onSimStuck(evt).catch((e) => log('agent', `sim stuck handling failed: ${e.message}`));
+      if (evt.type === 'teleop_done') onTeleopDone(evt).catch((e) => log('agent', `teleop_done handling failed: ${e.message}`));
+    });
+  } else { res.writeHead(404).end(); }
+}).listen(AGENTS_PORT, () => log('http', `sim webhook on http://localhost:${AGENTS_PORT}/events/sim`));
+
 connectClaims();
-log('service', `pickle agents service up — claim base ${CLAIM_BASE_URL}`);
+log('service', `pickle agents service up — claim base ${CLAIM_BASE_URL}, sim at ${SIM_URL}`);

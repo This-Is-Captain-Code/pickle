@@ -15,9 +15,10 @@ function connect() {
   ws.onclose = () => { chip('s-ws', 'ws: retry…', 'warn'); setTimeout(connect, 2000); };
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
-    if (m.t === 'init') { canControl = !!m.canControl; viewer.setGeoms(m); setRobot(m.robot); }
+    if (m.t === 'init') { canControl = !!m.canControl; viewer.setGeoms(m); setRobot(m.robot); setBounty(m.bounty); }
     else if (m.t === 'state') { viewer.setPoses(m.poses); setRobot(m.robot); }
     else if (m.t === 'robot') setRobot(m.robot);
+    else if (m.t === 'bounty') setBounty(m.bounty);
     else if (m.t === 'stuck') toast(`Stuck: ${m.event.title}`, 'warn');
     else if (m.t === 'toast') toast(m.msg, m.level);
     else if (m.t === 'denied') toast(m.msg, 'error');
@@ -30,6 +31,20 @@ viewer.onDrag = ({ body, target }) => {
 };
 
 function chip(id, text, cls = '') { const el = $(id); el.textContent = text; el.className = `chip ${cls}`; }
+
+// Bounty overlay: QR while open, status while claimed/verified. Set by the
+// agents core via POST /api/bounty; cleared with bounty=null.
+function setBounty(b) {
+  const el = $('bounty');
+  if (!b) { el.style.display = 'none'; $('bounty-qr').innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.className = b.state === 'claimed' ? 'claimed' : b.state === 'verified' ? 'verified' : '';
+  $('bounty-title').textContent = b.state === 'claimed' ? 'CLAIMED' : b.state === 'verified' ? 'VERIFIED 🥒' : 'BOUNTY — SCAN TO CLAIM';
+  $('bounty-text').textContent = b.title || '';
+  $('bounty-qr').innerHTML = '';
+  $('bounty-qr').style.display = b.url && b.state === 'open' ? 'inline-block' : 'none';
+  if (b.url && b.state === 'open' && window.QRCode) new QRCode($('bounty-qr'), { text: b.url, width: 148, height: 148, correctLevel: QRCode.CorrectLevel.M });
+}
 
 function setRobot(r) {
   if (!r) return;
