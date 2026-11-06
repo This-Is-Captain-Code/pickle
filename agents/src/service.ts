@@ -243,6 +243,11 @@ async function onClaim(m: { claimId: string; bountyId: string; device?: string }
     outcome = await providers.verifier.awaitOutcome(session.requestId);
   } catch (e: any) { outcome = { ok: false, code: 'error', detail: e.message }; }
 
+  // The bounty may have been withdrawn or expired while the human was in World App.
+  if (byDevice.get(dev) !== pb) {
+    log('world', `claim ${m.claimId} finished after ${pb.bounty.id} was withdrawn — ignored`);
+    return ack(m.claimId, 'rejected', { reason: 'This bounty was withdrawn while you were verifying (the robot recovered).' });
+  }
   if (!outcome.ok) {
     pb.phase = 'open'; pb.claimId = undefined;
     ack(m.claimId, 'rejected', { reason: `Verification failed: ${outcome.code}` });
