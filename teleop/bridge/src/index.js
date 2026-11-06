@@ -101,7 +101,7 @@ function armTargets(h) {
   out[p + 'shoulder_roll'] = h.side === 'right'
     ? mapAxis(dx, -0.15, 0.3, 0.3, -1.6)                                    // right hand out (+x) -> abduct (-roll)
     : mapAxis(dx, -0.3, 0.15, 1.6, -0.3);                                   // left hand out (-x) -> abduct (+roll)
-  out[p + 'elbow'] = mapAxis(reach, -0.1, 0.35, 1.9, -0.4);                 // reach forward -> extend
+  out[p + 'elbow'] = mapAxis(reach, -0.15, 0.5, 1.9, -0.1);                 // reach forward -> extend (full extension needs a deliberate ~0.5 m reach)
   return out;
 }
 
