@@ -99,6 +99,16 @@ export default {
     // "/" (and any static asset) is the Spectacles sender page; everything
     // else is a relay room: wss://<host>/<room>, GET /<room>, /<room>/stream.
     if (!parts[0] && request.headers.get('Upgrade') !== 'websocket') return env.ASSETS.fetch(request);
+    // Speakable short link for Spectacles (no QR scanner on Snap OS): the
+    // agents service pushes the open bounty's claim URL into room "bounty";
+    // GET /go redirects there.
+    if (parts[0] === 'go') {
+      const id = env.ROOMS.idFromName('bounty');
+      const res = await env.ROOMS.get(id).fetch(new Request(new URL('/bounty', url).toString()));
+      const latest = await res.json().catch(() => null);
+      if (latest?.url) return Response.redirect(latest.url, 302);
+      return new Response('No open bounty right now. Make a robot stuck first. 🥒', { status: 404, headers: { 'Content-Type': 'text/plain', ...CORS } });
+    }
     const roomId = parts[0] || 'default';
     const id     = env.ROOMS.idFromName(roomId);
     return env.ROOMS.get(id).fetch(request);

@@ -56,6 +56,16 @@ function connectClaims() {
   });
 }
 setInterval(() => { try { claimsWs?.readyState === WebSocket.OPEN && claimsWs.send('{"type":"ping"}'); } catch { /* reconnect handles it */ } }, 25_000);
+
+// Room "bounty" backs the speakable /go short link on the worker: push the
+// open bounty's claim URL so GET /go redirects to it (one-shot socket).
+function publishGo(url: string) {
+  try {
+    const ws = new WebSocket(CLAIMS_WS_URL.replace(/\/claims$/, '/bounty'));
+    ws.on('open', () => { ws.send(JSON.stringify({ url, at: Date.now() })); setTimeout(() => ws.close(), 500); });
+    ws.on('error', (e) => log('claims', `go-link publish failed: ${e.message}`));
+  } catch (e: any) { log('claims', `go-link publish failed: ${e.message}`); }
+}
 function ack(claimId: string, status: string, extra: Record<string, unknown> = {}) {
   const msg = JSON.stringify({ type: 'claim_ack', claimId, status, ...extra });
   recentAcks.push({ at: Date.now(), msg });
@@ -112,6 +122,7 @@ async function onCrash(dev: string, data: Record<string, unknown>) {
   pb.timer = setTimeout(() => expire(dev), 10 * 60_000);
 
   const url = `${CLAIM_BASE_URL}/claim.html?b=${bounty.id}&d=${dev}`;
+  publishGo(url); // keep the speakable /go short link pointing at the open bounty
   devices.cmd(dev, { cmd: 'simulate', kind: 'recover' }); // clear the red takeover; the poster is the state now
   devices.cmd(dev, { cmd: 'job', id: bounty.id, url });
   devices.cmd(dev, { cmd: 'state', state: 'JOB OPEN' });
