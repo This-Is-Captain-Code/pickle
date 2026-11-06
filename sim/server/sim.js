@@ -49,7 +49,9 @@ const LIMBS = [
 
 let TARGET_HOME = [0.40, 0, 0.89];           // where the feeder presents the next box
 const BOX_PARK = [[3, 0, 0.06], [3.4, 0, 0.06], [3.8, 0, 0.06], [4.2, 0, 0.06], [4.6, 0, 0.06]];
-const BELT = { x: [0.10, 0.40], yStart: -0.15, yEnd: -2.35, top: 0.72, speed: 0.35 }; // outfeed conveyor along -y
+// The Pickle stage has no conveyor: the capture zone is parked out of reach so
+// the belt-drive logic never grabs a box (kept for a future scene with a belt).
+const BELT = { x: [0.10, 0.40], yStart: -99, yEnd: -102, top: 0.72, speed: 0.35 };
 const OBSTACLE_PARK = [3, 3, 0.05];
 const OBSTACLE_SPOT = [0.40, 0, 0.975];      // fallen rack rail resting on the uprights just above the box: hands cannot get to the box
 const PERSON_PARK = [3, -3, 0.66];
