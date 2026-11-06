@@ -17,19 +17,25 @@ const SIM_WS = SIM_URL.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponen
 const RELAY_WS_URL = process.env.RELAY_WS_URL || 'wss://pickle-hand-relay.pickle-delhi.workers.dev/pickle';
 const RATE_HZ = +(process.env.RATE_HZ || 60);
 const AUTO_BEGIN = process.env.BRIDGE_AUTO_BEGIN === '1'; // dev: begin teleop as soon as the robot is stuck
+const SLEW = +(process.env.SLEW || 2.5); // max joint-target speed, rad/s
 const FAKE = process.argv.includes('--fake');
 
 const log = (tag, msg) => console.log(`[${tag}] ${msg}`);
 
 // ---------- One-Euro filter (per axis): light smoothing, low lag on fast moves ----------
 class OneEuro {
-  constructor({ minCutoff = 1.2, beta = 0.25, dCutoff = 1.0 } = {}) {
-    Object.assign(this, { minCutoff, beta, dCutoff, x: null, dx: 0, t: null });
+  constructor({ minCutoff = 0.9, beta = 0.15, dCutoff = 1.0 } = {}) {
+    Object.assign(this, { minCutoff, beta, dCutoff, x: null, dx: 0, t: null, m: [] });
   }
   alpha(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
-  filter(x, t) {
+  filter(xRaw, t) {
+    // median-of-3 prefilter: single-frame tracker spikes never reach the filter
+    this.m.push(xRaw);
+    if (this.m.length > 3) this.m.shift();
+    const x = this.m.length === 3 ? [...this.m].sort((a, b) => a - b)[1] : xRaw;
     if (this.t == null) { this.t = t; this.x = x; return x; }
-    const dt = Math.max((t - this.t) / 1000, 1e-3); this.t = t;
+    const dt = clamp((t - this.t) / 1000, 0.005, 0.05); // tolerate ts glitches
+    this.t = t;
     const dxRaw = (x - this.x) / dt;
     this.dx += this.alpha(this.dCutoff, dt) * (dxRaw - this.dx);
     const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
@@ -269,6 +275,15 @@ setInterval(() => {
     else if (maxReach != null) targets[wi] = +mapAxis(maxReach, 0.05, 0.35, 0, 0.5).toFixed(4); // legacy
   }
   if (targets.every((v) => v == null)) return;
+  // Slew-rate limit: joint targets may move at most SLEW rad/s, whatever the
+  // input does. Kills twitch at the last line of defence.
+  const maxStep = SLEW / RATE_HZ;
+  if (lastSent) {
+    for (let i = 0; i < nu; i++) {
+      if (targets[i] == null || lastSent[i] == null) continue;
+      targets[i] = +clamp(targets[i], lastSent[i] - maxStep, lastSent[i] + maxStep).toFixed(4);
+    }
+  }
   if (lastSent && targets.every((v, i) => v == null || lastSent[i] == null || Math.abs(v - lastSent[i]) < 0.005)) return;
   lastSent = targets;
   simWs.send(JSON.stringify({ t: 'ctrl', targets }));
@@ -291,9 +306,21 @@ function connectRelay() {
   // queued frames at once — replaying them moves the robot "on its own" with
   // stale motion. Keep only the freshest frame per tick, drop the backlog.
   let latest = null, dropped = 0, n = 0;
+  let lastFrameNo = -1, regressions = 0, lastWarn = 0;
   ws.on('message', (buf) => {
     let m; try { m = JSON.parse(buf); } catch { return; }
     if (!m.left && !m.right) return;
+    // Two sender tabs in the same room interleave frame counters — the robot
+    // jumps between two hand streams. Detect and shout about it.
+    if (typeof m.frame === 'number') {
+      if (m.frame < lastFrameNo - 5) regressions++;
+      lastFrameNo = m.frame;
+      if (regressions > 3 && Date.now() - lastWarn > 10_000) {
+        lastWarn = Date.now();
+        regressions = 0;
+        log('relay', 'WARNING: frame counter jumping backwards — looks like TWO sender tabs are streaming into this room. Close the extra one!');
+      }
+    }
     if (latest) dropped++;
     latest = m;
     if (++n % 600 === 1) log('relay', `frames flowing (#${n}, ${dropped} stale dropped)`);
