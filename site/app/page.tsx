@@ -40,7 +40,7 @@ const PIPELINE = [
 ];
 
 export default function Home() {
-  const [open, setOpen] = useState(0);
+  const [open, setOpen] = useState<number | null>(null);
 
   return (
     <main className="grid-bg">
@@ -63,7 +63,7 @@ export default function Home() {
         <p className="font-mono pointer-events-none absolute left-1/2 top-6 z-10 -translate-x-1/2 text-xs tracking-[0.35em] text-[var(--fg)] [text-shadow:0_1px_8px_rgba(0,0,0,0.8)]">
           THE THREE INTERVENTIONS
         </p>
-        <div className="trip">
+        <div className="trip" onMouseLeave={() => setOpen(null)}>
           {PANELS.map((p, i) => (
             <div
               key={p.num}
