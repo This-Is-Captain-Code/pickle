@@ -44,3 +44,11 @@ export function namedWallet(name: WalletName, provider: Provider = galileoProvid
 export function addressOf(name: WalletName): string {
   return namedWallet(name).address;
 }
+
+/** The deployer must never drop below this (user rule). Passed to sendTx as `floorWei`. */
+export const DEPLOYER_FLOOR_WEI = 200_000_000_000_000_000n; // 0.2 0G
+
+/** Budget floor for a named wallet (only the deployer has one). */
+export function floorFor(name: WalletName): bigint | undefined {
+  return name === 'DEPLOYER' ? DEPLOYER_FLOOR_WEI : undefined;
+}
