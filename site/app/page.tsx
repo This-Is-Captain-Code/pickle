@@ -32,13 +32,6 @@ const PANELS = [
   },
 ];
 
-const PIPELINE = [
-  { chip: '*-*', accent: 'var(--red)', text: 'The robot detects its own failure. Its agent decides what help to buy — every decision runs on 0G Compute and lands on 0G Storage with a request id. If 0G is unreachable, the robot safe-stops; it never fakes a decision.' },
-  { chip: 'JOB OPEN', accent: 'var(--orange)', text: 'The robot is the job board: the bounty renders where the failure is — a QR on the Watcher’s screen, an overlay above the G1, AR through Spectacles.' },
-  { chip: 'CLAIMED', accent: 'var(--cyan)', text: 'Identity gates the market. One human, one claim — World ID proof-of-human, with a human-approval checkpoint on protected agent actions.' },
-  { chip: 'VERIFIED', accent: 'var(--green)', text: 'Proof is physical: VBUS edges, joint telemetry, resume checks. Verification comes from the robot’s own sensors, not from trust.' },
-];
-
 export default function Home() {
   const [open, setOpen] = useState<number | null>(null);
 
@@ -105,28 +98,6 @@ export default function Home() {
               </div>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* ── HOW A BOUNTY CLEARS ──────────────────────────────────────── */}
-      <section className="snap-section">
-        <div className="mx-auto w-full max-w-4xl">
-          <p className="font-mono text-xs tracking-[0.35em] text-[var(--fg-dim)]">HOW A BOUNTY CLEARS</p>
-          <h2 className="font-display mt-3 text-3xl font-bold sm:text-4xl">
-            The robot’s screen is the state machine.
-          </h2>
-          <div className="mt-10 flex flex-col gap-6">
-            {PIPELINE.map((s) => (
-              <div key={s.chip} className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-8">
-                <div className="sm:w-40 sm:shrink-0 sm:text-right">
-                  <span className="chip" style={{ ['--ca' as string]: s.accent }}>
-                    {s.chip}
-                  </span>
-                </div>
-                <p className="min-w-0 text-[15px] leading-relaxed text-[var(--fg-dim)]">{s.text}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
