@@ -36,7 +36,15 @@ const TESTS: Test[] = [
   { name: 'smoke:escrow', file: 'escrow.ts', needs: ['AGENT_G1_PRIVATE_KEY', 'AGENT_2_PRIVATE_KEY'] },
   { name: 'smoke:storage', file: 'storage.ts', needs: ['DEPLOYER_PRIVATE_KEY'] },
   { name: 'smoke:episode', file: 'episode.ts', needs: ['DEPLOYER_PRIVATE_KEY', 'AGENT_G1_PRIVATE_KEY'] },
-  { name: 'smoke:compute', file: 'compute.ts', needs: ['ZEROG_ROUTER_KEY'] },
+  // Text runs on ZEROG_COMPUTE_MODE (direct = testnet, paid by COMPUTE_WALLET; router = mainnet key).
+  // Vision always uses the Router, so the router key is needed in both modes.
+  {
+    name: 'smoke:compute',
+    file: 'compute.ts',
+    needs: (process.env.ZEROG_COMPUTE_MODE || 'direct') === 'direct'
+      ? ['COMPUTE_WALLET_PRIVATE_KEY', 'ZEROG_ROUTER_KEY']
+      : ['ZEROG_ROUTER_KEY'],
+  },
   { name: 'smoke:compute-down', file: 'compute-down.ts' },
   { name: 'smoke:world', file: 'world.ts', needs: ['WORLD_IDP_CLIENT_ID', 'WORLD_IDP_CLIENT_SECRET'] },
   { name: 'smoke:zerobot', file: 'zerobot.ts', skip: 'not built yet (vendor/zerobot setup pending)' },

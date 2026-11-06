@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Indexer, MemData } from '@0gfoundation/0g-storage-ts-sdk';
 import { formatEther, type Wallet } from 'ethers';
+import type { EpisodeLogger, EpisodeReceipt, EpisodeRecord } from '@pickle/shared';
 import { GALILEO, explorerTx } from './chain.js';
 import { BudgetFloorError, audit, runExclusive } from './tx.js';
 
@@ -125,5 +126,20 @@ export async function downloadBytes(rootHash: string, opts: { verbose?: boolean 
     return new Uint8Array(readFileSync(out));
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Live EpisodeLogger (the @pickle/shared interface the agents core uses): one 0G Storage upload per
+ * decision record, paid by the DEPLOYER inside its sendTx queue. Replaces the old zerog/src/storage.ts
+ * stub — the storage code lives here because it shares agents' tx queue and audit log.
+ */
+export class StorageEpisodeLogger implements EpisodeLogger {
+  constructor(private wallet: Wallet) {}
+
+  async append(record: EpisodeRecord): Promise<EpisodeReceipt> {
+    const bytes = new TextEncoder().encode(JSON.stringify(record, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)));
+    const r = await uploadBytes(bytes, this.wallet, { action: `episode ${record.robotId} ${record.decision.requestId}`, walletName: 'DEPLOYER' });
+    return { rootHash: r.rootHash, txHash: r.txHash };
   }
 }

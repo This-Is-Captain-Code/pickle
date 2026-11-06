@@ -10,12 +10,9 @@ import {
   MockApprovalCheckpoint,
   MockHumanVerifier,
 } from '@pickle/world';
-import {
-  MockDecisionEngine,
-  MockEpisodeLogger,
-  ZeroGDecisionEngine,
-  ZeroGEpisodeLogger,
-} from '@pickle/zerog';
+import { MockDecisionEngine, MockEpisodeLogger, ZeroGDecisionEngine } from '@pickle/zerog';
+import { walletFromEnv } from './chain.js';
+import { StorageEpisodeLogger } from './storage.js';
 
 export interface Providers {
   verifier: HumanVerifier;
@@ -79,12 +76,9 @@ export function buildProviders(): Providers {
           verifyTee: zerogMode === 'direct' ? env('ZEROG_DIRECT_REQUIRE_TEE') === '1' : env('ZEROG_VERIFY_TEE', '1') === '1',
         })
       : new MockDecisionEngine({ unreachable: env('ZEROG_UNREACHABLE') === '1' }),
+    // 0G Storage uploads are paid by the DEPLOYER (decision 2026-11-06), inside its sendTx queue.
     episodes: zerogLive
-      ? new ZeroGEpisodeLogger({
-          rpcUrl: env('ZEROG_RPC_URL', 'https://evmrpc-testnet.0g.ai'),
-          privateKey: required('ZEROG_PRIVATE_KEY'),
-          indexerUrl: env('ZEROG_INDEXER_URL', 'https://indexer-storage-testnet-turbo.0g.ai'),
-        })
+      ? new StorageEpisodeLogger(walletFromEnv('DEPLOYER_PRIVATE_KEY'))
       : new MockEpisodeLogger(),
   };
 }
