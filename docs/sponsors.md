@@ -119,6 +119,12 @@ Proposed for smoke tests: text and vision both on **`0gm-1.0-35b-a3b`** (TEE-att
 - "Do not retry 400, 401, 402, or 403."
 - For our safe-stop: network failure, 5xx, 429 after retry, or a malformed answer → `UNAVAILABLE`, never a substituted answer.
 
+**Observed live (2026-11-06 16:45, mainnet Router)** — these differ from the docs:
+- A zero-balance account returns `402` with code **`pay_no_balance`** ("Add funds to keep using services."). 0G-ERR and 0G-DEP document `insufficient_balance`. Our code treats any 402 as UNAVAILABLE, so both work.
+- Every response, including errors, carries an **`x-request-id` header**, along with `x-0g-gateway-instance` and `x-0g-e2ee` (`sealed` for the TEE model). The 502 body had no `request_id` field, so we log the header on errors.
+- Rate-limit headers: `x-ratelimit-limit-requests: 30`, `x-ratelimit-remaining-requests`, `x-ratelimit-reset-requests`.
+- `0gm-1.0-35b-a3b` → `502 upstream_error` "fetch provider quote: Get https://compute-network-20.integratenetwork.work/v1/quote?legacy=false: EOF". The provider behind the Router is failing.
+
 **Direct / broker path** (0G-INF) — alternative if the testnet Router stays down
 - Package `@0gfoundation/0g-compute-ts-sdk` (latest `0.9.0`, NPM); Node ≥ 20.0.0 (0G-INF).
 - `createZGComputeNetworkBroker(wallet)` on RPC `https://evmrpc-testnet.0g.ai`.

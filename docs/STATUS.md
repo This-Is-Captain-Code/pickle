@@ -6,7 +6,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 |---|---|---|---|
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
 | 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
-| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 `smoke:compute-down` ✅ PASS 16:35. `smoke:compute` code ready, **waiting for `ZEROG_ROUTER_KEY`** (agents/.env still holds the placeholder) | started 16:29 |
+| 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 `smoke:compute-down` ✅ PASS 16:35. `smoke:compute` ❌ blocked on 0G's side (16:47): the account has **no balance** (`402 pay_no_balance`), and the `0gm-1.0-35b-a3b` provider fails its quote fetch (`502 upstream_error … compute-network-20.integratenetwork.work … EOF`, x-request-id `ac87632ee2e3dd78`) | started 16:29 |
 | 4 | 0G Storage: `smoke:storage` | ⏸ | — |
 | 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ | — |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
