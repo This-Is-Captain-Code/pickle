@@ -232,3 +232,9 @@ Not touched: `world/src/idkit.ts`, `world/src/mock.ts`, `zerog/src/mock.ts`, `ag
 ### Live pipeline rehearsal (2026-11-07, demo service)
 
 Full bounty pipeline PASS with WORLD_MODE=live + ZEROG_MODE=live through the actual agents service (not smoke scripts): power-loss -> 0G decision (post_physical_bounty, req 35792aa1) + episode on Storage (0x28c88be1...) -> claim page on a phone -> REAL World ID Proof of Human approved in World App (nullifier 0x07d15e0d05...) -> VBUS proof (device-only fake watcher, FAKE_DEVICE=1) -> 0G verdict (fix_confirmed, req 970e75a7) -> VERIFIED. The claim page now renders the World connectorURI (QR + open-in-World-App link). Remaining: same take on real Watcher hardware at the venue.
+
+### Teleop bounty loop, no autonomy (2026-11-07, ZEROG_MODE=live, escrow live)
+
+The G1 sim never runs a policy now: it boots into teleop, stages the box and announces its standing job to the agents core (retrying until acknowledged); every completion restages and announces again. `npx tsx --env-file=.env src/tools/sim-e2e.ts` PASS 3x: stuck -> 0G decision (post_teleop_bounty) -> bounty + on-chain `postBounty` from AGENT_G1 -> claim via relay -> `claim` on-chain -> scripted sweep knocks the box off -> `teleop_done` -> 0G verdict (fix_confirmed) -> VERIFIED -> `settle`. Bounties **#30** and **#31** are `Settled` on Galileo with the worker = payout address.
+
+Ops learned: robot escrow balances are small (G1 0.004 = 4 loops, R2 0.001 = 1 loop) and a service restart with an open bounty leaks it on-chain as `Open`. Before a demo, from `agents/`: `scripts/escrow-status.ts 12 --reclaim` (cancels strays) then `scripts/deploy-escrow.ts` (idempotent top-up). Service log is mirrored to `agents/logs/service.log`.
