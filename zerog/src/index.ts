@@ -6,4 +6,3 @@ export type { ChatMessage, ContentPart, RouterConfig, RouterResult } from './rou
 export { DirectBackend, loadComputeSdk, TESTNET_RPC, TESTNET_DEFAULT_PROVIDER } from './direct.js';
 export type { DirectConfig } from './direct.js';
 export type { ChatBackend, ChatResult } from './backend.js';
-export { ZeroGEpisodeLogger } from './storage.js';
