@@ -23,7 +23,7 @@ import { buildProviders } from './providers.js';
 import { Devices } from './devices.js';
 import { ADDRESSES_PATH, DEMO_PAYOUT, Escrow, escrowDeployed, humanHash } from './escrow.js';
 import { walletFromEnv } from './chain.js';
-import type { Wallet } from 'ethers';
+import { id as keccakText, type Wallet } from 'ethers';
 
 const env = (k: string, d = '') => process.env[k] ?? d;
 const BROKER_URL = env('BROKER_URL');
@@ -33,6 +33,15 @@ const SIM_URL = env('SIM_URL', 'http://localhost:8787');
 const SIM_TOKEN = env('SIM_TELEOP_TOKEN', 'dev-token');
 const AGENTS_PORT = +env('AGENTS_PORT', '8090');
 const PICKUP_TIMEOUT_MS = 3 * 60_000;
+// Machine intervention (robot -> robot): with MACHINE_DEMO=1, a robot's power
+// bounty is offered to the helper robot first; its agent decides on 0G and
+// claims with its own wallet — no World ID, the worker is a machine. Humans
+// get the QR only if the helper is offline or declines.
+// A short press of the Watcher's knob toggles it at runtime (DEMO 1 <-> DEMO 3 on both screens).
+let machineMode = env('MACHINE_DEMO') === '1';
+const HELPER_DEV = env('HELPER_DEVICE', 'tdeck-01');
+const HELPER_ADDRESS = env('HELPER_ADDRESS', env('AGENT_G1_ADDRESS'));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 if (!BROKER_URL) { console.error('BROKER_URL is required (see agents/.env.example)'); process.exit(1); }
 
@@ -57,6 +66,10 @@ interface ActiveBounty {
   /** On-chain state: ops run sequentially in this queue, never blocking the UX. */
   chainQ?: Promise<void>;
   onchainId?: bigint;
+  /** Set when another robot (not a human) took the job. */
+  worker?: { dev: string; address: string };
+  /** Settle landed on-chain (the helper's PAID screen is only ever shown for real money). */
+  paid?: boolean;
 }
 
 // ── PickleEscrow (0G Galileo): the payout happens on-chain, non-blocking ──
@@ -93,6 +106,8 @@ function asBytes32(root: string): string {
 const byDevice = new Map<string, ActiveBounty>(); // one active bounty per robot
 const deciding = new Set<string>(); // robots whose (slow, live) 0G decision is in flight — no second bounty meanwhile
 const lastRssi = new Map<string, number>();
+const lastVbat = new Map<string, number>();
+const online = new Set<string>();
 
 async function simPost(path: string, body: Record<string, unknown> = {}) {
   const res = await fetch(`${SIM_URL}${path}`, {
@@ -142,11 +157,18 @@ function ack(claimId: string, status: string, extra: Record<string, unknown> = {
 
 // ---------- device events ----------
 devices.on('connect', () => log('mqtt', `connected ${BROKER_URL.replace(/:[^:@/]+@/, ':***@')}`));
-devices.on('status', (dev, online) => log('mqtt', `${dev} is ${online ? 'online' : 'OFFLINE (death beat)'}`));
+devices.on('status', (dev, up) => { if (up) online.add(dev); else online.delete(dev); log('mqtt', `${dev} is ${up ? 'online' : 'OFFLINE (death beat)'}`); });
 devices.on('evt', (evt) => {
   const pb = byDevice.get(evt.dev);
+  online.add(evt.dev); // an event beats a stale status
   if (evt.kind === 'heartbeat' && typeof evt.data.rssi === 'number') lastRssi.set(evt.dev, evt.data.rssi);
+  if (evt.kind === 'heartbeat' && typeof evt.data.vbat === 'number') lastVbat.set(evt.dev, evt.data.vbat);
   if (evt.kind === 'crash') log('robot', `${evt.dev} crash event (ignored — power loss is the trigger now)`);
+  if (evt.kind === 'click' && !pb && evt.dev !== HELPER_DEV) {
+    machineMode = !machineMode;
+    log('demo', `knob click on ${evt.dev} -> ${machineMode ? 'DEMO 3 (robot hires robot)' : 'DEMO 1 (robot hires human)'}`);
+    showMode(evt.dev);
+  }
   if (evt.kind === 'power') {
     if (!pb && !deciding.has(evt.dev) && evt.data.on === false) {
       deciding.add(evt.dev);
@@ -155,6 +177,18 @@ devices.on('evt', (evt) => {
     if (pb && evt.data.on === true) onPowerRestored(pb, evt.dev).catch((e) => log('agent', `power-restore handling failed: ${e.message}`));
   }
 });
+
+// Idle screens show which demo the next power loss will run (1 = human, 3 = robot).
+function showMode(dev = 'watcher-01') {
+  devices.cmd(dev, { cmd: 'say', text: machineMode ? 'DEMO 3: ROBOT HELPS' : 'DEMO 1: HUMAN HELPS' });
+  if (online.has(HELPER_DEV)) devices.cmd(HELPER_DEV, { cmd: 'say', text: machineMode ? 'DEMO 3: I HELP' : 'DEMO 1: standby' });
+}
+// Fresh service: whatever the screens were left showing is stale — reset both to IDLE + mode.
+devices.on('connect', () => setTimeout(() => {
+  if (byDevice.size) return;
+  for (const d of ['watcher-01', HELPER_DEV]) { devices.cmd(d, { cmd: 'job' }); devices.cmd(d, { cmd: 'state', state: 'IDLE' }); }
+  showMode();
+}, 1500));
 
 // ---------- 1. power lost -> decision -> bounty + QR (the dying poster) ----------
 async function onPowerLoss(dev: string, data: Record<string, unknown>) {
@@ -205,11 +239,86 @@ async function onPowerLoss(dev: string, data: Record<string, unknown>) {
 
   const url = `${CLAIM_BASE_URL}/claim.html?b=${bounty.id}&d=${dev}`;
   publishGo(url); // keep the speakable /go short link pointing at the open bounty
-  devices.cmd(dev, { cmd: 'job', id: bounty.id, url });
-  devices.cmd(dev, { cmd: 'say', text: 'SCAN TO SAVE ME' });
-  devices.cmd(dev, { cmd: 'state', state: '*-*' }); // dying face, red poster
-  log('bounty', `${bounty.id} posted on ${dev} — QR -> ${url}`);
+  const toRobot = machineMode && dev !== HELPER_DEV && online.has(HELPER_DEV) && Boolean(HELPER_ADDRESS);
+  if (toRobot) {
+    // Machine intervention: no QR yet — the job goes to the helper robot first.
+    devices.cmd(dev, { cmd: 'job', id: bounty.id, payout: '0.001 0G' });
+    devices.cmd(dev, { cmd: 'say', text: 'HIRING A ROBOT' });
+    devices.cmd(dev, { cmd: 'state', state: '*-*' });
+    log('bounty', `${bounty.id} posted on ${dev} — offered to ${HELPER_DEV} first (machine intervention)`);
+  } else {
+    devices.cmd(dev, { cmd: 'job', id: bounty.id, url });
+    devices.cmd(dev, { cmd: 'say', text: 'SCAN TO SAVE ME' });
+    devices.cmd(dev, { cmd: 'state', state: '*-*' }); // dying face, red poster
+    log('bounty', `${bounty.id} posted on ${dev} — QR -> ${url}`);
+  }
   postOnChain(dev, pb);
+  if (toRobot) offerToRobot(dev, pb).catch((e) => { log('agent', `robot offer failed: ${e.message}`); fallbackToHumans(dev, pb); });
+}
+
+// ---------- 1b. machine intervention: offer the job to the helper robot ----------
+async function offerToRobot(dev: string, pb: ActiveBounty) {
+  const h = HELPER_DEV;
+  const live = () => byDevice.get(dev) === pb && pb.phase === 'open';
+  devices.cmd(h, { cmd: 'job', id: pb.bounty.id, payout: '0.001 0G' });
+  devices.cmd(h, { cmd: 'say', text: `${dev} needs power` });
+  devices.cmd(h, { cmd: 'state', state: 'JOB OPEN' });
+  await sleep(2500); // let the offer land on the screen before the robot "thinks"
+  if (!live()) return;
+  devices.cmd(h, { cmd: 'state', state: 'BIDDING' });
+  devices.cmd(h, { cmd: 'say', text: 'deciding on 0G...' });
+  const situation = {
+    request: `deliver external power to ${dev}, a robot that is on battery and cannot move itself`,
+    requester: dev, payoutOffered: '0.001 0G', distance: 'same table, a few seconds away',
+    ownBatteryVolts: lastVbat.get(h) ?? null, ownPowerBank: 'available and charged', ownTask: 'idle',
+    device: h,
+  };
+  let decision;
+  try {
+    decision = await providers.engine.decide({
+      robotId: h, situation,
+      question: 'Another robot is offering to pay you to deliver power to it. Choose the response.',
+      options: ['accept_job', 'decline'],
+    });
+  } catch (err) {
+    if (err instanceof ZeroGUnreachable) { log('safe-stop', `0G unreachable — ${h} cannot decide; job goes to humans`); if (live()) fallbackToHumans(dev, pb); return; }
+    throw err;
+  }
+  const receipt = await providers.episodes.append({ ts: Date.now(), robotId: h, bountyId: pb.bounty.id, decision, situation });
+  log('0g', `${h} decision=${decision.choice} requestId=${decision.requestId} episode=${receipt.rootHash.slice(0, 14)}…`);
+  if (!live()) return;
+  if (decision.choice !== 'accept_job') {
+    devices.cmd(h, { cmd: 'say', text: 'declined' });
+    devices.cmd(h, { cmd: 'state', state: 'IDLE' });
+    devices.cmd(h, { cmd: 'job' });
+    fallbackToHumans(dev, pb);
+    return;
+  }
+
+  pb.phase = 'awaiting_power'; pb.bounty.state = 'claimed'; pb.claimedAt = Date.now();
+  pb.worker = { dev: h, address: HELPER_ADDRESS };
+  pb.timer && clearTimeout(pb.timer);
+  pb.timer = setTimeout(() => expire(dev), PICKUP_TIMEOUT_MS);
+  const rc = robotChain.get(dev);
+  if (rc) chainOp(pb, `claim(${dev} by ${h})`, async () => {
+    if (pb.onchainId == null) throw new Error('no on-chain bounty id (postBounty failed?)');
+    // The contract's "human hash" is just the worker's identity hash; for a robot it is its id.
+    return (await escrow!.claim(rc.wallet, pb.onchainId, HELPER_ADDRESS, keccakText(`pickle.robot.${h}`))).hash;
+  });
+  devices.cmd(h, { cmd: 'job', id: pb.bounty.id, payout: '0.001 0G', worker: h });
+  devices.cmd(h, { cmd: 'state', state: 'CLAIMED' });
+  devices.cmd(h, { cmd: 'say', text: 'deal: 0.001 0G' });
+  devices.cmd(dev, { cmd: 'state', state: 'CLAIMED' });
+  devices.cmd(dev, { cmd: 'say', text: `${h} is coming` });
+  log('robot', `${h} accepted ${pb.bounty.id} — robot-to-robot deal, payout to ${HELPER_ADDRESS.slice(0, 10)}… on proof`);
+}
+
+// Helper offline/declined/unreachable: the poster becomes the human QR as usual.
+function fallbackToHumans(dev: string, pb: ActiveBounty) {
+  const url = `${CLAIM_BASE_URL}/claim.html?b=${pb.bounty.id}&d=${dev}`;
+  devices.cmd(dev, { cmd: 'job', id: pb.bounty.id, url });
+  devices.cmd(dev, { cmd: 'say', text: 'SCAN TO SAVE ME' });
+  log('bounty', `${pb.bounty.id} offered to humans — QR -> ${url}`);
 }
 
 // Escrow the demo payout from the robot's own wallet (non-blocking; off-chain demo continues on failure).
@@ -297,9 +406,10 @@ async function onPowerRestored(pb: ActiveBounty, dev: string) {
       return (await escrow!.cancel(robotChain.get(dev)!.wallet, pb.onchainId)).hash;
     });
     devices.cmd(dev, { cmd: 'job' });
-    devices.cmd(dev, { cmd: 'say', text: '' });
     devices.cmd(dev, { cmd: 'state', state: 'IDLE' });
+    if (pb.worker) { devices.cmd(pb.worker.dev, { cmd: 'job' }); devices.cmd(pb.worker.dev, { cmd: 'state', state: 'IDLE' }); }
     byDevice.delete(dev);
+    showMode(dev);
     return;
   }
   if (pb.phase === 'awaiting_power') {
@@ -308,7 +418,7 @@ async function onPowerRestored(pb: ActiveBounty, dev: string) {
     const situation = { proof: 'vbus_restored', seconds_since_claim: rescueS, charging: true, rssi: lastRssi.get(dev) ?? null, device: dev };
     const verdict = await providers.engine.decide({
       robotId: dev, situation,
-      question: 'Telemetry after human intervention: external power restored, battery charging. Is the robot rescued?',
+      question: `Telemetry after ${pb.worker ? `robot ${pb.worker.dev} delivered power` : 'human intervention'}: external power restored, battery charging. Is the robot rescued?`,
       options: ['fix_confirmed', 'still_stuck'],
     });
     const epi = await providers.episodes.append({ ts: Date.now(), robotId: dev, bountyId: pb.bounty.id, decision: verdict, situation });
@@ -320,17 +430,31 @@ async function onPowerRestored(pb: ActiveBounty, dev: string) {
     devices.cmd(dev, { cmd: 'state', state: 'VERIFIED' });
     devices.cmd(dev, { cmd: 'say', text: 'fix verified. thank you!' });
     if (pb.claimId) ack(pb.claimId, 'verified');
+    if (pb.worker) { devices.cmd(pb.worker.dev, { cmd: 'state', state: 'VERIFIED' }); devices.cmd(pb.worker.dev, { cmd: 'say', text: 'job verified' }); }
     log('bounty', `${pb.bounty.id} VERIFIED — bounty complete 🥒`);
     const rcs = robotChain.get(dev);
     if (rcs) {
       chainOp(pb, `settle(${dev})`, async () => {
         if (pb.onchainId == null) throw new Error('no on-chain bounty id');
         const r = await escrow!.settle(rcs.wallet, pb.onchainId, verdict.requestId, asBytes32(epi.rootHash));
-        log('chain', `0.001 0G paid to ${PAYOUT_ADDRESS.slice(0, 10)}… — settle cites compute ${verdict.requestId.slice(0, 8)}… + storage root on-chain`);
+        const paidTo = pb.worker ? `${pb.worker.dev} (${pb.worker.address.slice(0, 10)}…)` : `${PAYOUT_ADDRESS.slice(0, 10)}…`;
+        log('chain', `0.001 0G paid to ${paidTo} — settle cites compute ${verdict.requestId.slice(0, 8)}… + storage root on-chain`);
+        if (pb.worker) {
+          const w = pb.worker.dev;
+          pb.paid = true;
+          devices.cmd(w, { cmd: 'state', state: 'PAID' });
+          devices.cmd(w, { cmd: 'say', text: '+0.001 0G received' });
+          setTimeout(() => { devices.cmd(w, { cmd: 'job' }); devices.cmd(w, { cmd: 'state', state: 'IDLE' }); showMode(dev); }, 20_000);
+        }
         return r.hash;
       });
     }
-    setTimeout(() => { devices.cmd(dev, { cmd: 'job' }); devices.cmd(dev, { cmd: 'state', state: 'IDLE' }); byDevice.delete(dev); }, 10_000);
+    setTimeout(() => {
+      devices.cmd(dev, { cmd: 'job' }); devices.cmd(dev, { cmd: 'state', state: 'IDLE' });
+      // Helper resets here too unless its PAID screen (own 20 s timer) is up.
+      if (pb.worker && !pb.paid) { devices.cmd(pb.worker.dev, { cmd: 'job' }); devices.cmd(pb.worker.dev, { cmd: 'state', state: 'IDLE' }); }
+      byDevice.delete(dev); showMode(dev);
+    }, 10_000);
   }
 }
 
@@ -339,6 +463,7 @@ function expire(dev: string) {
   if (!pb || pb.phase === 'verified') return;
   log('bounty', `${pb.bounty.id} expired in phase ${pb.phase}`);
   if (pb.claimId) ack(pb.claimId, 'rejected', { reason: 'Bounty expired.' });
+  if (pb.worker) { devices.cmd(pb.worker.dev, { cmd: 'job' }); devices.cmd(pb.worker.dev, { cmd: 'say', text: 'job expired' }); devices.cmd(pb.worker.dev, { cmd: 'state', state: 'IDLE' }); }
   const rce = robotChain.get(dev);
   if (rce) {
     const claimed = pb.phase === 'awaiting_power' || pb.phase === 'in_progress';
@@ -354,6 +479,7 @@ function expire(dev: string) {
   } else {
     devices.cmd(dev, { cmd: 'job' });
     devices.cmd(dev, { cmd: 'state', state: 'IDLE' });
+    showMode(dev);
   }
   byDevice.delete(dev);
 }
