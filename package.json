@@ -15,7 +15,8 @@
   ],
   "scripts": {
     "dev": "npm run dev -w agents",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke:chain": "npm run compile --prefix contracts/hardhat && tsx agents/scripts/smoke/chain.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
