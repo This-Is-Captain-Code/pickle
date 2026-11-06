@@ -1,0 +1,185 @@
+@import 'tailwindcss';
+
+/* Layout: full-viewport snap sections, mission-control dark. The color
+   language is the Watcher's own screen palette: red *-* (dying), orange
+   JOB OPEN, cyan CLAIMED, green VERIFIED. */
+:root {
+  --bg: #070a08;
+  --bg-raise: #0d1210;
+  --fg: #e8f0ea;
+  --fg-dim: #8fa399;
+  --line: #1d2622;
+  --green: #3fd68f; /* verified / brand */
+  --green-hot: #5dff9f;
+  --red: #ff5f56; /* *-* dying */
+  --orange: #ffb020; /* JOB OPEN */
+  --cyan: #35cfe0; /* CLAIMED */
+  --yellow: #ffd166; /* BIDDING */
+  color-scheme: dark;
+}
+
+html {
+  scroll-snap-type: y proximity;
+  scroll-behavior: smooth;
+}
+@media (min-width: 768px) {
+  html {
+    scroll-snap-type: y mandatory;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.snap-section {
+  min-height: 100svh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-inline: max(20px, env(safe-area-inset-left, 0px)) max(20px, env(safe-area-inset-right, 0px));
+}
+
+.font-display {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+.font-mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* faint phosphor grid over the whole page */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 40%, black 30%, transparent 100%);
+}
+
+/* ── the three expanding intervention panels ───────────────────────────── */
+.panels {
+  display: flex;
+  gap: 10px;
+  height: min(62svh, 560px);
+}
+.panel {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raise);
+  cursor: pointer;
+  transition: flex-grow 0.45s cubic-bezier(0.25, 1, 0.3, 1), border-color 0.3s;
+}
+.panel.open {
+  flex-grow: 4.2;
+  border-color: var(--pa);
+}
+.panel .num {
+  color: var(--pa);
+}
+.panel .bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--pa);
+  opacity: 0.9;
+}
+.panel .closed-label {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  letter-spacing: 0.22em;
+  transition: opacity 0.25s;
+}
+.panel.open .closed-label {
+  opacity: 0;
+}
+.panel .body {
+  position: absolute;
+  inset: 0;
+  padding: clamp(16px, 3vw, 34px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  opacity: 0;
+  transition: opacity 0.3s 0.15s;
+  min-width: min(78vw, 520px);
+}
+.panel.open .body {
+  opacity: 1;
+}
+
+@media (max-width: 767px) {
+  .panels {
+    flex-direction: column;
+    height: auto;
+  }
+  .panel {
+    min-height: 72px;
+    transition: min-height 0.4s cubic-bezier(0.25, 1, 0.3, 1), border-color 0.3s;
+  }
+  .panel.open {
+    min-height: 420px;
+  }
+  .panel .closed-label {
+    writing-mode: horizontal-tb;
+    transform: none;
+    left: 64px;
+    bottom: auto;
+    top: 26px;
+  }
+  .panel .body {
+    min-width: 0;
+    position: relative;
+    padding-top: 64px;
+  }
+}
+
+/* state chips, as rendered on the robot's own screen */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ca) 55%, transparent);
+  color: var(--ca);
+  background: color-mix(in srgb, var(--ca) 10%, transparent);
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--green-hot);
+  box-shadow: 0 0 10px var(--green-hot);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
