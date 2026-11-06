@@ -65,12 +65,13 @@ export function buildProviders(): Providers {
     engine: zerogLive
       ? new ZeroGDecisionEngine({
           mode: env('ZEROG_COMPUTE_MODE', 'router') as 'router' | 'direct',
-          routerBaseUrl: env('ZEROG_ROUTER_URL', 'https://router-api-testnet.integratenetwork.work/v1'),
+          routerBaseUrl: env('ZEROG_ROUTER_URL', 'https://router-api.0g.ai/v1'),
           routerApiKey: env('ZEROG_ROUTER_KEY'),
           rpcUrl: env('ZEROG_RPC_URL', 'https://evmrpc-testnet.0g.ai'),
           privateKey: env('ZEROG_PRIVATE_KEY'),
           providerAddress: env('ZEROG_PROVIDER_ADDRESS'),
-          model: env('ZEROG_MODEL', 'qwen3.5-flash'),
+          model: env('ZEROG_MODEL', '0gm-1.0-35b-a3b'),
+          verifyTee: env('ZEROG_VERIFY_TEE', '1') === '1',
         })
       : new MockDecisionEngine({ unreachable: env('ZEROG_UNREACHABLE') === '1' }),
     episodes: zerogLive
