@@ -5,7 +5,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 | # | Step | State | Time to first PASS |
 |---|---|---|---|
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
-| 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | 🟡 wallet created; **waiting for funding** | — |
+| 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
 | 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | ⏸ | — |
 | 4 | 0G Storage: `smoke:storage` | ⏸ | — |
 | 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ | — |
@@ -17,6 +17,28 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 | Address | Purpose | Network | Created |
 |---|---|---|---|
 | `0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd` | Deployer (contracts on Galileo). Key in `agents/.env` as `DEPLOYER_PRIVATE_KEY` | 0G Galileo 16602 — https://chainscan-galileo.0g.ai/address/0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd | 2026-11-06 |
+| `0xaEd150ed47D91A489AfF7631bb06F5d4CCBF2162` | SmokeStore (smoke:chain test contract, not used by app) | Galileo — https://chainscan-galileo.0g.ai/address/0xaEd150ed47D91A489AfF7631bb06F5d4CCBF2162 | 2026-11-06 |
+
+Funding received: 0.5 0G at the deployer (confirmed via `eth_getBalance` before the first tx).
+
+## Transactions
+
+| Purpose | Hash | Cost |
+|---|---|---|
+| Deploy SmokeStore | [0x990dfdf8…3218d](https://chainscan-galileo.0g.ai/tx/0x990dfdf8ba9ea9f6a7fbce1c0507f25bc00d32b413193f691547f8527663218d) | 0.000474188 0G |
+| `set(1793961404343)` | [0xc1bcb73e…cbc88](https://chainscan-galileo.0g.ai/tx/0xc1bcb73e48fdfb55805f51a84c2f99e7824c74a837e6fef1a42de585025cbc88) | 0.000268676 0G |
+
+Deployer balance after step 2: 0.499257 0G.
+
+## Packages installed
+
+| Package | Version | Where | Why / source |
+|---|---|---|---|
+| ethers | 6.17.0 | agents | 0G Storage SDK peer dep (0G-STORAGE); chain client |
+| dotenv | 16.6.1 | agents | load `agents/.env`; matches zerobot's `^16.6.1` |
+| hardhat | 2.29.1 | contracts/hardhat (dev) | D2: Hardhat 2 (0G-DEPLOY shows Hardhat; zerobot uses ^2.22) |
+| solc | 0.8.27 (downloaded by Hardhat) | — | zerobot config; cancun per 0G-DEPLOY |
+| tsx 4.23.15, typescript 5.9.3 | (root, already in lockfile) | root | ran `npm install` at the root, which had never been run |
 
 ## Decisions (made 2026-11-06)
 
@@ -24,6 +46,7 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 - **D2:** Hardhat 2 + ethers v6, solc 0.8.27, evmVersion cancun.
 - **D3:** Mainnet Router `https://router-api.0g.ai/v1` with model `0gm-1.0-35b-a3b`. Credits come from 0G mentors.
 - **D4:** `vendor/zerobot`, pinned to `c8328ad`, gitignored, with setup commands in a README. WebRTC is timeboxed to 20 min, then fall back to WSL.
+- **Open:** should 0G Storage uploads reuse the deployer wallet? Recommended yes, so only one address needs funding.
 - **World:** the proof source is swappable (`sandbox` | `mock`). Validation always runs on our backend.
 
 ## File plan (for teammate coordination)
