@@ -5,12 +5,50 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 | # | Step | State | Time to first PASS |
 |---|---|---|---|
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
-| 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ⏸ waiting on decisions below | — |
+| 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | 🟡 wallet created; **waiting for funding** | — |
 | 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | ⏸ | — |
 | 4 | 0G Storage: `smoke:storage` | ⏸ | — |
 | 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ | — |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
 | 7 | `smoke:all`, update STATUS | ⏸ | — |
+
+## Addresses
+
+| Address | Purpose | Network | Created |
+|---|---|---|---|
+| `0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd` | Deployer (contracts on Galileo). Key in `agents/.env` as `DEPLOYER_PRIVATE_KEY` | 0G Galileo 16602 — https://chainscan-galileo.0g.ai/address/0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd | 2026-11-06 |
+
+## Decisions (made 2026-11-06)
+
+- **D1:** Build into the existing `agents/`, `world/` and `zerog/` packages. Keys go in `agents/.env`.
+- **D2:** Hardhat 2 + ethers v6, solc 0.8.27, evmVersion cancun.
+- **D3:** Mainnet Router `https://router-api.0g.ai/v1` with model `0gm-1.0-35b-a3b`. Credits come from 0G mentors.
+- **D4:** `vendor/zerobot`, pinned to `c8328ad`, gitignored, with setup commands in a README. WebRTC is timeboxed to 20 min, then fall back to WSL.
+- **World:** the proof source is swappable (`sandbox` | `mock`). Validation always runs on our backend.
+
+## File plan (for teammate coordination)
+
+| File | Change |
+|---|---|
+| `agents/package.json`, `agents/.env.example`, `package-lock.json` | Deps + env vars (done for step 2) |
+| `agents/scripts/new-wallet.ts` | New (done) |
+| `agents/scripts/smoke/*.ts` | New: one per smoke test + `all.ts` |
+| `agents/src/providers.ts` | Small edit: new World/0G config fields and defaults (mainnet router URL, model, proof source). The mock defaults stay unchanged |
+| `agents/src/chain.ts` | New: minimal 0G Chain client |
+| `zerog/src/compute.ts` | Implement `ZeroGDecisionEngine` (router mode) |
+| `zerog/src/storage.ts` | Implement `ZeroGEpisodeLogger` |
+| `zerog/package.json` | Deps |
+| `world/src/agentpass.ts` | Implement `AgentPassCheckpoint` (device grant + backend validation) |
+| `world/src/proof-source.ts` | New: `sandbox` / `mock` proof source behind one interface |
+| `world/package.json` | Deps |
+| `contracts/hardhat/` | New, self-contained Hardhat 2 project for the smoke contract. Kept separate from the teammate's escrow port |
+| `shared/addresses.json` | New: deployed addresses |
+| `shared/src/types.ts` | **No changes planned.** If one becomes necessary I'll ask first |
+| `vendor/README.md`, `.gitignore` | zerobot setup commands; ignore `vendor/zerobot/` |
+| `package.json` (root) | Add `smoke:*` scripts |
+| `docs/smoke-tests.md`, `docs/world-debrief.md` | New |
+
+Not touched: `world/src/idkit.ts`, `world/src/mock.ts`, `zerog/src/mock.ts`, `agents/src/index.ts`, `sim/`, `teleop/`.
 
 ## Things you must do by hand
 
