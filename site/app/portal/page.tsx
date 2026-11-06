@@ -67,7 +67,7 @@ export default function Portal() {
       cls: 'PHYSICAL',
       dir: 'HUMAN → ROBOT',
       accent: 'var(--red)',
-      img: '/panels/physical.jpg',
+      img: '/jobs/plug.jpg',
       robot: 'watcher-01 · SenseCAP Watcher',
       title: 'Plug me back in',
       detail:
@@ -83,7 +83,7 @@ export default function Portal() {
       cls: 'REMOTE',
       dir: 'HUMAN → ROBOT',
       accent: 'var(--cyan)',
-      img: '/panels/remote.jpg',
+      img: '/jobs/teleop.jpg',
       robot: 'g1-sim-01 · Unitree G1 (MuJoCo)',
       title: 'Rail fell across my feeder — take control and lift it off',
       detail:
@@ -99,7 +99,7 @@ export default function Portal() {
       cls: 'MACHINE',
       dir: 'ROBOT → ROBOT',
       accent: 'var(--yellow)',
-      img: '/panels/machine.jpg',
+      img: '/jobs/charge.jpg',
       robot: 'tdeck-01 · charging slot B',
       title: 'Charging slot lease, 09:00–09:40',
       detail:
