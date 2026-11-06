@@ -403,3 +403,23 @@ export function deployTx(
     iface,
   });
 }
+
+/**
+ * Run an external sender (e.g. the 0G Storage SDK, which signs its own Flow.submit tx) inside the
+ * wallet's serial queue, so it can never race a sendTx nonce. `fn` gets the next nonce to use; the
+ * tracked nonce is re-read from the chain afterwards, since we can't see what `fn` broadcast.
+ */
+export function runExclusive<T>(wallet: Wallet, fn: (nonce: number) => Promise<T>): Promise<T> {
+  const q = queueFor(wallet.address);
+  const run = q.tail.then(async () => {
+    const provider = wallet.provider!;
+    if (q.nonce === undefined) q.nonce = await withNetRetry(() => provider.getTransactionCount(wallet.address, 'pending'));
+    try {
+      return await fn(q.nonce);
+    } finally {
+      q.nonce = undefined;
+    }
+  });
+  q.tail = run.catch(() => undefined);
+  return run;
+}
