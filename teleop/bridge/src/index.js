@@ -87,7 +87,7 @@ const PARK_POSE = {
 function updateHand(h, data, t) {
   const wrist = data?.joints?.[0]?.pos;
   if (!wrist) {
-    if (t - h.lastSeen > LOST_RESET_MS) { h.origin = null; h.calib = []; h.offset = null; }
+    if (t - h.lastSeen > LOST_RESET_MS) { h.origin = null; h.calib = []; h.offset = null; h.basis = null; }
     return;
   }
   h.lastSeen = t;
@@ -97,7 +97,13 @@ function updateHand(h, data, t) {
     h.calib.push(wrist);
     if (h.calib.length >= CALIB_FRAMES) {
       h.origin = [0, 1, 2].map((i) => h.calib.reduce((s, p) => s + p[i], 0) / h.calib.length);
-      log('calib', `${h.side} hand origin locked at [${h.origin.map((v) => v.toFixed(3)).join(', ')}]`);
+      // Freeze the torso frame at calibration (head yaw), so deltas stay
+      // body-aligned no matter where the user later looks.
+      let fwd = head ? qrot(head.rot, [0, 0, -1]) : [0, 0, -1];
+      fwd = unit([fwd[0], 0, fwd[2]]);
+      if (!Number.isFinite(fwd[0]) || norm(fwd) < 0.5) fwd = [0, 0, -1];
+      h.basis = { fwd, right: unit(cross(fwd, [0, 1, 0])) };
+      log('calib', `${h.side} hand origin locked at [${h.origin.map((v) => v.toFixed(3)).join(', ')}] -> robot ready pose`);
     }
     return;
   }
@@ -120,28 +126,25 @@ function updateHand(h, data, t) {
   }
 }
 
-// ---------- arm IK (head + wrist -> shoulder/elbow angles) ----------
-// WebXR has no elbow/shoulder joints, so we reconstruct them VR-avatar style:
-// estimate the shoulder from the head pose, aim the two-link arm at the wrist,
-// elbow bend from distance, natural-elbow-down plane. BRIDGE_IK=0 disables.
+// ---------- arm IK (anchored deltas -> shoulder/elbow angles) ----------
+// WebXR has no elbow/shoulder joints. Instead of reconstructing the user's
+// absolute arm (whose geometry never matches the robot's), the calibration
+// origin is pinned to the robot's ready pose: the wrist target starts at
+// D_REST (the ready-pose wrist, measured relative to the robot's shoulder)
+// and moves by the user's hand delta, torso-aligned via the head yaw frozen
+// at calibration. Two-link solve from there. BRIDGE_IK=0 restores legacy.
 const USE_IK = process.env.BRIDGE_IK !== '0';
 const ARM_U = 0.22, ARM_F = 0.26; // G1 upper arm / forearm (m)
-const ARM_SCALE = +(process.env.ARM_SCALE || 0.8); // human reach -> robot reach
+const ARM_SCALE = +(process.env.ARM_SCALE || 0.8); // human hand delta -> robot delta
+const D_REST = { left: [0.32, 0.07, -0.23], right: [0.32, -0.07, -0.23] }; // ready-pose wrist, shoulder-relative
 
 function armTargetsIK(h) {
-  if (!h.abs || !head) return null;
-  const up = [0, 1, 0];
-  let fwd = qrot(head.rot, [0, 0, -1]);
-  fwd = unit([fwd[0], 0, fwd[2]]); // flatten to horizontal
-  if (!Number.isFinite(fwd[0]) || norm(fwd) < 0.5) fwd = [0, 0, -1];
-  const right = unit(cross(fwd, up));
-  const sideSign = h.side === 'right' ? 1 : -1;
-  // shoulder ≈ head, dropped and shifted laterally
-  const shoulder = add(add(add(head.pos, scale(up, -0.22)), scale(right, 0.17 * sideSign)), scale(fwd, -0.03));
-  const v = sub(h.abs, shoulder);
-  // torso-aligned components -> robot frame (x fwd, y left, z up)
-  const d = [dot(v, fwd), -dot(v, right), dot(v, up)];
-  const Lraw = norm(d) * ARM_SCALE;
+  if (!h.offset) return null;
+  const basis = h.basis ?? { fwd: [0, 0, -1], right: [1, 0, 0] };
+  // XR delta (x right, y up, z back) -> robot frame (x fwd, y left, z up)
+  const dd = [dot(h.offset, basis.fwd), -dot(h.offset, basis.right), h.offset[1]];
+  const d = add(D_REST[h.side], scale(dd, ARM_SCALE));
+  const Lraw = norm(d);
   const L = clamp(Lraw, 0.08, ARM_U + ARM_F - 0.01);
   const dir = unit(d);
 
@@ -249,7 +252,7 @@ setInterval(() => {
   }
   for (const h of [hands.left, hands.right]) {
     if (!h.seenWall || now - h.seenWall > 400) continue; // stale hand: don't steer with old data
-    const t = USE_IK && head ? armTargetsIK(h) : armTargets(h);
+    const t = USE_IK ? armTargetsIK(h) : armTargets(h);
     if (!t) continue;
     if (t._lean != null) maxLean = Math.max(maxLean ?? 0, t._lean);
     if (t._reach != null) maxReach = Math.max(maxReach ?? -99, t._reach);
@@ -326,4 +329,4 @@ function runFake() {
 
 connectSim();
 if (FAKE) runFake(); else connectRelay();
-log('bridge', `mode=${FAKE ? 'fake' : 'relay'} rate=${RATE_HZ}Hz autoBegin=${AUTO_BEGIN} ik=${USE_IK ? 'on (needs head pose from sender)' : 'off'}`);
+log('bridge', `mode=${FAKE ? 'fake' : 'relay'} rate=${RATE_HZ}Hz autoBegin=${AUTO_BEGIN} ik=${USE_IK ? 'on (anchored: calibration = ready pose)' : 'off'}`);

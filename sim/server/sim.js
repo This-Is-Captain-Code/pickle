@@ -115,6 +115,7 @@ export class Sim extends EventEmitter {
     this.current = 0; this.held = null; this.processed = 0; this.releasedAt = null;
     this.personMocap = model.body_mocapid[model.body('person').id];
     this.rightWrist = model.body('right_wrist_yaw_link').id; this.leftWrist = model.body('left_wrist_yaw_link').id;
+    this.rightShoulder = model.body('right_shoulder_roll_link').id; this.leftShoulder = model.body('left_shoulder_roll_link').id;
     this.handBodies = [this.leftWrist, this.rightWrist];
     Object.defineProperty(this, 'targetBody', { get: () => this.boxes[this.current].body });
 
@@ -181,6 +182,7 @@ export class Sim extends EventEmitter {
       person: { pos: [0, 1, 2].map((i) => +this.mocapPos[3 * this.personMocap + i].toFixed(3)), motion: this.personMotion() },
       box: this.boxPos().map((v) => +v.toFixed(3)),
       wrists: { l: this.wrist(this.leftWrist).map((v) => +v.toFixed(3)), r: this.wrist(this.rightWrist).map((v) => +v.toFixed(3)) },
+      shoulders: { l: this.wrist(this.leftShoulder).map((v) => +v.toFixed(3)), r: this.wrist(this.rightShoulder).map((v) => +v.toFixed(3)) },
       actions: this.stuckReason ? ACTIONS[this.stuckReason].map((a) => ({ id: a.id, label: a.label, desc: a.desc, done: this.actionsDone.includes(a.id), available: a.needs ? a.needs(this) : true })) : [],
       actionsDone: this.actionsDone, resume: this.resumeCheck(), macroRunning: !!this.macro, macroError: this.macroError || null,
     };
