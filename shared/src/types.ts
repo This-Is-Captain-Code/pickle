@@ -12,7 +12,7 @@ export type BountyState =
   | 'open'
   | 'claimed'
   | 'verifying'
-  | 'paid'
+  | 'verified' // fix confirmed — terminal state (no on-chain settlement in scope)
   | 'expired'
   | 'cancelled'
   | 'denied';

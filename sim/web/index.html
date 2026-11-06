@@ -17,6 +17,12 @@
   button:disabled { opacity: 0.4; cursor: default; }
   #stuck { background: rgba(20,22,26,0.92); color: #e8edf2; border: 1px solid rgba(255,176,32,0.5); border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.5; display: none; }
   #stuck b { color: #ffb020; }
+  #bounty { position: fixed; top: 10px; right: 10px; z-index: 10; background: rgba(20,22,26,0.92); border: 2px solid #ffb020; border-radius: 12px; padding: 14px; text-align: center; display: none; max-width: 210px; }
+  #bounty h3 { color: #ffb020; font-size: 14px; margin-bottom: 4px; letter-spacing: 1px; }
+  #bounty p { color: #cfd6dd; font-size: 11px; line-height: 1.4; margin-bottom: 8px; }
+  #bounty-qr { background: #fff; padding: 8px; border-radius: 6px; display: inline-block; }
+  #bounty.claimed { border-color: #29c8d8; } #bounty.claimed h3 { color: #29c8d8; }
+  #bounty.verified { border-color: #3fd68f; } #bounty.verified h3 { color: #3fd68f; }
   #toasts { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-direction: column; gap: 6px; align-items: center; }
   .toast { background: rgba(20,22,26,0.92); color: #e8edf2; padding: 7px 14px; border-radius: 8px; font-size: 12px; border: 1px solid rgba(255,255,255,0.15); }
   .toast.ok { border-color: rgba(63,214,143,0.5); } .toast.warn { border-color: rgba(255,176,32,0.5); } .toast.error { border-color: rgba(255,107,107,0.5); }
@@ -41,16 +47,27 @@
     <span class="chip" id="s-done">shipped: 0</span>
   </div>
   <div class="row">
+    <button data-scenario="knock">📦 knock box</button>
     <button data-scenario="obstacle">💥 drop rail</button>
     <button data-scenario="person">🚶 person enters</button>
-    <button data-scenario="knock">📦 knock box</button>
     <button data-scenario="reset">↺ reset</button>
     <button id="b-teleop" disabled>🕹 begin teleop</button>
     <button id="b-done" disabled>✅ work done</button>
   </div>
   <div id="stuck"></div>
 </div>
+<div id="bounty">
+  <h3 id="bounty-title">BOUNTY</h3>
+  <p id="bounty-text"></p>
+  <div id="bounty-qr"></div>
+</div>
 <div id="toasts"></div>
+<div id="complete" style="display:none; position:fixed; inset:0; z-index:20; background:rgba(5,20,10,0.82); backdrop-filter:blur(2px); align-items:center; justify-content:center; flex-direction:column; gap:10px;">
+  <div style="font-size:64px;">🥒</div>
+  <div style="font-size:52px; font-weight:800; letter-spacing:4px; color:#3fd68f; text-shadow:0 0 30px rgba(63,214,143,0.8);">BOUNTY COMPLETE</div>
+  <div style="font-size:14px; color:#9aa3ad;">verified by the robot's own telemetry · next bounty in a moment…</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module" src="/main.js"></script>
 </body>
 </html>

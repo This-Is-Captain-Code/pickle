@@ -85,7 +85,7 @@ function updateHand(h, data, t) {
     h.pinched = was ? d < PINCH_OFF : d < PINCH_ON;
     if (!was && h.pinched && h.side === 'right' && Date.now() - lastPinchActionAt > 600) {
       lastPinchActionAt = Date.now();
-      sendAction(holding ? 'drop' : 'pick');
+      // pinch disconnected by request — arms only, no pick/drop
     }
   }
 }

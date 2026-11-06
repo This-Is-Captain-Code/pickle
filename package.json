@@ -11,7 +11,8 @@
     "zerog",
     "agents",
     "sim",
-    "teleop/bridge"
+    "teleop/bridge",
+    "site"
   ],
   "scripts": {
     "dev": "npm run dev -w agents",

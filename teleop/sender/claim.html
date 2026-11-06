@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pickle Bounty</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0b0d10; color: #e8edf2; font-family: ui-monospace, Menlo, monospace;
+         min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { max-width: 420px; width: 100%; text-align: center; display: flex; flex-direction: column; gap: 16px; }
+  .pickle { font-size: 56px; }
+  h1 { font-size: 20px; }
+  #status { font-size: 15px; line-height: 1.6; color: #9aa3ad; }
+  #status b { color: #e8edf2; }
+  .state { padding: 14px; border-radius: 12px; font-size: 17px; font-weight: 700; letter-spacing: 1px; }
+  .state.wait { background: rgba(255,176,32,0.15); border: 1px solid rgba(255,176,32,0.5); color: #ffb020; }
+  .state.ok   { background: rgba(63,214,143,0.15); border: 1px solid rgba(63,214,143,0.5); color: #3fd68f; }
+  .state.err  { background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.5); color: #ff6b6b; }
+  .meta { font-size: 12px; color: #5a6470; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="pickle">🥒</div>
+  <h1>Pickle — robot bounty</h1>
+  <div id="state" class="state wait">CLAIMING…</div>
+  <div id="status">Registering your claim…</div>
+  <div class="meta" id="meta"></div>
+</div>
+<script>
+// Opened by scanning the QR on the stuck robot's screen.
+// Sends a claim into the relay room "claims"; the agents core picks it up,
+// verifies the human (IDKit hook lands here), and acks back into the room.
+const q = new URLSearchParams(location.search);
+const bountyId = q.get('b') || '';
+const device = q.get('d') || '';
+const claimId = 'c-' + Math.random().toString(36).slice(2, 10);
+const stateEl = document.getElementById('state'), statusEl = document.getElementById('status');
+document.getElementById('meta').textContent = bountyId ? `bounty ${bountyId} · ${device}` : '';
+
+function show(cls, state, msg) { stateEl.className = 'state ' + cls; stateEl.textContent = state; statusEl.innerHTML = msg; }
+
+if (!bountyId) {
+  show('err', 'NO BOUNTY', 'This link is missing a bounty id. Scan the QR on the robot\'s screen.');
+} else {
+  const ws = new WebSocket(`wss://${location.host}/claims`);
+  let acked = false;
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'claim', claimId, bountyId, device, ts: Date.now() }));
+    setTimeout(() => { if (!acked) show('err', 'NO ANSWER', 'The robot\'s agent did not respond. Is the agents service running?'); }, 12000);
+  };
+  ws.onerror = () => show('err', 'OFFLINE', 'Could not reach the bounty relay.');
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type !== 'claim_ack' || m.claimId !== claimId) return;
+    acked = true;
+    if (m.status === 'verifying') show('wait', 'VERIFYING…', 'Proving you are a unique human…');
+    else if (m.status === 'claimed') show('ok', 'YOURS ✓', `<b>${m.instruction || 'Plug the robot into power.'}</b>`);
+    else if (m.status === 'verified') show('ok', 'VERIFIED 🥒', 'The robot\'s agent confirmed the fix. Bounty complete — thank you!');
+    else if (m.status === 'rejected') show('err', 'REJECTED', m.reason || 'Verification failed or bounty already claimed.');
+  };
+}
+</script>
+</body>
+</html>
