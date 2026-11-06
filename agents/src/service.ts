@@ -105,14 +105,24 @@ devices.on('evt', (evt) => {
 // ---------- 1. power lost -> decision -> bounty + QR (the dying poster) ----------
 async function onPowerLoss(dev: string, data: Record<string, unknown>) {
   log('robot', `${dev} lost power${data.initial ? ' (woke up unplugged)' : ''} — running on battery`);
-  const situation = { stuckReason: 'power_lost', onBattery: true, initial: data.initial === true, rssi: lastRssi.get(dev) ?? null, device: dev };
+  const situation = {
+    stuckReason: 'power_lost',
+    onBattery: true,
+    battery: 'draining, hours remain',
+    selfRecovery: 'impossible — this robot cannot move itself or reach power',
+    owner: 'unreachable (away from site)',
+    bountyMarket: 'available — verified humans nearby can be hired in seconds for small physical tasks',
+    initial: data.initial === true,
+    rssi: lastRssi.get(dev) ?? null,
+    device: dev,
+  };
 
   let decision;
   try {
     decision = await providers.engine.decide({
       robotId: dev,
       situation,
-      question: 'Robot lost external power and is draining its battery. It cannot move itself. Choose the response.',
+      question: 'Robot lost external power and is draining its battery. Choose the response that restores operation fastest.',
       options: ['post_physical_bounty', 'wait_and_retry', 'alert_owner'],
     });
   } catch (err) {
