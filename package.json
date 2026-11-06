@@ -26,7 +26,8 @@
     "smoke:escrow": "tsx agents/scripts/smoke/escrow.ts",
     "smoke:storage": "tsx agents/scripts/smoke/storage.ts",
     "smoke:episode": "tsx agents/scripts/smoke/episode.ts",
-    "smoke:all": "tsx agents/scripts/smoke/all.ts"
+    "smoke:all": "tsx agents/scripts/smoke/all.ts",
+    "smoke:world": "tsx agents/scripts/smoke/world.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
