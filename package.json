@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "smoke:chain": "npm run compile --prefix contracts/hardhat && tsx agents/scripts/smoke/chain.ts",
     "smoke:compute": "tsx agents/scripts/smoke/compute.ts",
-    "smoke:compute-down": "tsx agents/scripts/smoke/compute-down.ts"
+    "smoke:compute-down": "tsx agents/scripts/smoke/compute-down.ts",
+    "wallets": "tsx agents/scripts/wallets.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
