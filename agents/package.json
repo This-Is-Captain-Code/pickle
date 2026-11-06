@@ -10,6 +10,8 @@
   "dependencies": {
     "@pickle/shared": "*",
     "@pickle/world": "*",
-    "@pickle/zerog": "*"
+    "@pickle/zerog": "*",
+    "dotenv": "16.6.1",
+    "ethers": "6.17.0"
   }
 }
