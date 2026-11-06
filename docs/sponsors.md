@@ -58,6 +58,23 @@ Source keys used below:
 - 0G-DEPLOY links "0G Chain Scan" to the mainnet explorer `chainscan.0g.ai`, and its success example shows a mainnet URL. Use `chainscan-galileo.0g.ai` for testnet.
 - 0G-DEPLOY's Hardhat deploy snippet uses the ethers v5 API (`token.deployed()`, `token.address`). Current Hardhat is v3 (`3.21.2`, NPM) and ethers is v6.
 
+### Our deployment — PickleEscrow (live, 2026-11-06)
+
+| What | Value |
+|---|---|
+| PickleEscrow | `0xCcdbe1e1f597dbc8Ce5788a35f5f1383D2990f9a`, **source verified**: https://chainscan-galileo.0g.ai/address/0xCcdbe1e1f597dbc8Ce5788a35f5f1383D2990f9a#code |
+| Deploy tx | https://chainscan-galileo.0g.ai/tx/0x904c0eaa9f6482f82251d5b95dcf248269eafecf33a581b509c4f9c62422ce89 (0.005967 0G) |
+| Owner (deployer) | `0x677ec7981a5953367394f94FFB86Ff7CF36e36Cd` |
+| Max payout / demo payout | 0.005 0G / 0.001 0G |
+| Robot G1 → agent | `0xdb8e063E2069Ae59DF257497E58cD3f2fFD7E750` → AGENT_G1 `0xDAD48EdA182bDED77427e7085673A7cA0d4c540A` |
+| Robot R2 → agent | `0x5ad164A6e19120410ded00f8C2C7B04E09fD23FF` → AGENT_2 `0xabC77d1ee26f0833e0408c137878162dB698D90c` |
+| ABI | `shared/abi/PickleEscrow.json`; addresses in `shared/addresses.json` |
+| Example settle with a real 0G Storage root | bounty #3: https://chainscan-galileo.0g.ai/tx/0x4c9522fac3155359a5cefdb3a8dfcf6345346e2f795d148b7edeeda6e61dfa48 — `storageRoot` `0x7ece716869cb196bc3dad0ae71549a88522346087f8cb1afa31b25031a9b48cc` |
+| Example expire (fail path, called by a third party) | bounty #2: https://chainscan-galileo.0g.ai/tx/0x094c7f8737c76fd91a096bd11bb58e6c48ca9b620272f49dd9fd610661faaca4 |
+
+- **Verification works** with `@nomicfoundation/hardhat-verify` 2.1.1, `customChains` apiURL `https://chainscan-galileo.0g.ai/open/api` and a placeholder API key (`npx hardhat verify --network galileo <addr> 5000000000000000` in `contracts/hardhat`). It prints an Etherscan-v2 deprecation warning but succeeds.
+- **Gas price observed:** ~4 gwei (`maxFeePerGas` 4000000014, `maxPriorityFeePerGas` 4000000000), EIP-1559 type 2.
+
 ## 2. 0G Compute — Private Computer / Router (OpenAI-compatible)
 
 **Two separate environments.** "Mainnet and testnet are fully separate environments": separate UI, API endpoint, balances and keys (0G-ROUTER).
@@ -103,7 +120,7 @@ Source keys used below:
 
 | ID | Input | Notes | USD / token (prompt / completion) |
 |---|---|---|---|
-| `0gm-1.0-35b-a3b` | text, image | **TEE** (`verifiability: TeeML`, TDX, dstack) — vision + verifiable, best fit for the track | 0.00000008 / 0.00000048 |
+| `0gm-1.0-35b-a3b` (**gone from the live catalog 2026-11-06 17:30 IST**; now `0gm-1.0-35b-a3b-sia`, input modalities **text only**) | text, image | **TEE** (`verifiability: TeeML`, TDX, dstack) — vision + verifiable, best fit for the track | 0.00000008 / 0.00000048 |
 | `qwen2.5-vl-72b-instruct` | text, image | cheapest vision | 0.000000045 / 0.000000195 |
 | `glm-5.3-flash` | text, image | | 0.00000009015 / 0.0000003153 |
 | `qwen3.8-flash` | text, image, video | | 0.00000019125 / 0.00000059925 |
@@ -135,6 +152,8 @@ Proposed for smoke tests: text and vision both on **`0gm-1.0-35b-a3b`** (TEE-att
 - CLI `@0gfoundation/0gpc` needs macOS/Linux and Node ≥ 22 (PC). It isn't usable on our Windows + Node 20.16 box, and we don't need it.
 
 ## 3. 0G Storage
+
+**Probed 2026-11-06 (smoke:storage / smoke:episode):** `MemData` upload returns `{ txHash, rootHash, txSeq }` (confirmed) and the root equals `MemData.merkleTree().rootHash()` computed locally. A ~0.5 KB upload costs ≈0.0012–0.0013 0G, almost all gas (~300k gas). The storage fee (`tx.value`) is ≈6e-8 0G. Upload takes ~10 s (finality on); download with proof takes ~2 s. The SDK's peer is **exactly** `ethers 6.13.1`, so `agents` pins that. The SDK accepts `uploadOpts.nonce`, which we use to keep it on our per-wallet nonce queue.
 
 | Fact | Value | Source |
 |---|---|---|

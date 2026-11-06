@@ -7,10 +7,66 @@ Owner: Gopika. Scope and rules are in the brief (CLAUDE.md). Facts and sources a
 | 1 | Research → docs/sponsors.md | ✅ done 2026-11-06 | n/a |
 | 2 | 0G Chain: deployer wallet, funding, `smoke:chain` | ✅ PASS 2026-11-06 16:06 IST | ~32 min from wallet creation (15:34) to PASS, including funding wait and ~20 min of npm/solc download timeouts |
 | 3 | 0G Compute: `smoke:compute`, `smoke:compute-down` | 🟡 `smoke:compute-down` ✅ PASS 16:35. `smoke:compute` ❌ blocked on 0G's side (16:47): the account has **no balance** (`402 pay_no_balance`), and the `0gm-1.0-35b-a3b` provider fails its quote fetch (`502 upstream_error … compute-network-20.integratenetwork.work … EOF`, x-request-id `ac87632ee2e3dd78`) | started 16:29 |
-| 4 | 0G Storage: `smoke:storage` | ⏸ | — |
-| 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ | — |
+| 4 | 0G Storage: `smoke:storage` | ✅ PASS 2026-11-06 17:26 IST (first attempt) | see Pickle session below |
+| 5 | World ID Agent Pass: `smoke:world` (success + denied), start world-debrief.md | ⏸ SKIPPED — no World IdP client in `agents/.env` | — |
 | 6 | zerobot: `smoke:zerobot` with mock Go2 | ⏸ | — |
-| 7 | `smoke:all`, update STATUS | ⏸ | — |
+| 7 | `smoke:all`, update STATUS | ✅ 2026-11-06 17:35 IST: 7 PASS · 1 FAIL (compute, 402) · 2 SKIPPED | — |
+
+## Pickle work session — 2026-11-06 17:00–17:40 IST (branch `gopika/sponsor-setup`, PR #1)
+
+| Part | What | Result |
+|---|---|---|
+| 0 | Push 15 commits to `gopika/sponsor-setup`, open PR | ✅ https://github.com/This-Is-Captain-Code/pickle/pull/1 |
+| 1 | `PickleEscrow` contract + 31 Hardhat tests | ✅ 31 passing (every revert, happy path, claim→expire, same human twice, cancel/expire while paused, reentrancy) |
+| 2 | `AGENT_G1`, `AGENT_2` wallets + `npm run wallets` | ✅ |
+| 3 | Safe sender `agents/src/tx.ts` + `smoke:tx` | ✅ 5 concurrent sends land in nonce order; failing call refused before signing as `NotOwner` |
+| 4 | Deploy, verify, register, fund + `smoke:escrow` | ✅ deployed + **verified** on chainscan; live settle (#1) and expire (#2) |
+| 5 | 0G Storage `smoke:storage` + Episode logger + `smoke:episode` | ✅ bounty #3 settled with a real storage root that downloads byte-identical |
+| 6a | 0G Compute `smoke:compute` | ❌ blocked on 0G: Router account has **no balance** (`402 pay_no_balance`). Also: the model `0gm-1.0-35b-a3b` was renamed to `0gm-1.0-35b-a3b-sia` in the live catalog and is now **text-only**, so the vision check can't pass on it |
+| 6b | World `smoke:world` | ⏭ SKIPPED — `WORLD_IDP_CLIENT_ID` empty, `WORLD_IDP_CLIENT_SECRET` is the placeholder |
+| 7 | `smoke:all`, docs, PR description | ✅ |
+
+### PickleEscrow design notes
+
+- `claimWindow` is counted **from the claim**: `deadline = claimedAt + claimWindow`. `settle` after the deadline → `ClaimExpired`; `expire` before it → `ClaimNotExpired`. Open (unclaimed) bounties don't expire; the agent cancels them.
+- `expire` is terminal (escrow back to the robot's balance). `hasClaimed[bountyId][humanHash]` is never cleared, and is checked **before** status, so the same human re-claiming always gets `HumanAlreadyClaimed`; a different human on a claimed bounty gets `BountyNotOpen`.
+- **Pause** blocks `settle` and `withdraw` (money out) and also `postBounty` and `claim` (new obligations). `cancel`, `expire` and `fund` stay open.
+- **Added beyond the spec:** `withdraw(robot, to, amount)` (agent only, blocked by pause) so a robot's un-escrowed balance is never stuck; extra errors `NotOwner`, `RobotNotRegistered`, `ZeroAddress`, `ZeroAmount`, `InvalidClaimWindow` (0 or > 30 days), `InvalidHumanHash`, `BountyNotFound`, `ClaimNotExpired`, `NotPaused`, `TransferFailed`, `Reentrancy`. Pause events are `ContractPaused`/`ContractUnpaused` (Solidity won't allow an event and the `Paused` error to share a name).
+- `storageRoot` is `bytes32` (0G Storage roots are 32 bytes); `computeRequestId` is a `string`.
+- Robots are on-chain IDs `address(keccak256("pickle.robot.<name>"))` with no key. `humanHash = keccak256("pickle.human.<World subject>")`.
+
+### Safe sender (agents/src/tx.ts)
+
+Every write in `agents/` goes through `sendTx`, including `smoke:chain` (migrated this session). The 0G Storage SDK signs its own `Flow.submit` tx, so it runs inside the same per-wallet queue via `runExclusive` (our nonce, floor check first, audited). The deployer has a hard **0.2 0G floor**. Audit log: `agents/logs/audit.jsonl` (gitignored).
+
+### Addresses created this session
+
+| Address | What |
+|---|---|
+| `0xCcdbe1e1f597dbc8Ce5788a35f5f1383D2990f9a` | PickleEscrow (Galileo, verified) — https://chainscan-galileo.0g.ai/address/0xCcdbe1e1f597dbc8Ce5788a35f5f1383D2990f9a#code |
+| `0xDAD48EdA182bDED77427e7085673A7cA0d4c540A` | AGENT_G1 wallet (agent for robot G1). Key in `agents/.env` |
+| `0xabC77d1ee26f0833e0408c137878162dB698D90c` | AGENT_2 wallet (agent for robot R2). Key in `agents/.env` |
+| `0xdb8e063E2069Ae59DF257497E58cD3f2fFD7E750` | Robot G1 on-chain ID (no key) |
+| `0x5ad164A6e19120410ded00f8C2C7B04E09fD23FF` | Robot R2 on-chain ID (no key) |
+
+### Budget
+
+- 51 txs mined this session, **0.023358 0G** in gas + storage fees (DEPLOYER 0.016534, AGENT_G1 0.006491, AGENT_2 0.000333). Every tx with hash and cost: `agents/logs/audit.jsonl`; summary in the PR.
+- Value moved (still ours): agent gas top-ups 0.014412 0G, robot escrow funding 0.007 0G. Demo payouts (4 × 0.001) went to the deployer address.
+- Deployer **0.499136 → 0.465190 0G**. AGENT_G1 0.004755, AGENT_2 0.002833. Escrow holds 0.003 (G1 0.002, R2 0.001).
+- Typical costs at 4 gwei: deploy 0.005967; postBounty 0.000468; claim 0.000452; settle 0.000242; expire 0.000167; storage upload (≈0.5 KB) ≈0.0012–0.0013, almost all gas (storage fee ≈6e-8 0G).
+
+### Shared-interface changes
+
+- `shared/src/types.ts`: **unchanged.**
+- New `shared/abi/PickleEscrow.json`. `shared/addresses.json` gains `galileo.contracts.PickleEscrow` and `galileo.robots`.
+- `agents/package.json`: **ethers 6.17.0 → 6.13.1** (exact peer of `@0gfoundation/0g-storage-ts-sdk@1.2.13`; npm `overrides` can't override a peer). Added `@0gfoundation/0g-storage-ts-sdk 1.2.13`.
+- `contracts/hardhat`: added test/verify plugins (hardhat-ethers 3.1.0, hardhat-chai-matchers 2.1.0, hardhat-network-helpers 1.1.0, hardhat-verify 2.1.1, chai 4.5.0, ethers 6.17.0).
+- The Episode logger lives in `agents/src/episode.ts`. `zerog/src/storage.ts` (`ZeroGEpisodeLogger`) is **still a stub**: see the next point.
+
+### Concurrent work in this tree (not mine, not committed)
+
+A second Claude session in this repo (started ~3 h earlier) was editing `zerog/` (adding the 0G Compute broker SDK and a "direct" testnet mode), plus `agents/src/providers.ts`, `agents/scripts/smoke/compute*.ts` and the root `package-lock.json`, while this session ran. I didn't commit or modify any of it. My lockfile commit was built from a clean checkout so their compute-SDK lock entries weren't included. That's also why I kept the storage SDK in `agents/` and not `zerog/`.
 
 ## Addresses
 
@@ -83,6 +139,8 @@ Not touched: `world/src/idkit.ts`, `world/src/mock.ts`, `zerog/src/mock.ts`, `ag
 
 | What | Where | Needed for |
 |---|---|---|
+| **0G Compute credits:** the Router key works but the account has no balance (`402 pay_no_balance`). Deposit at pc.0g.ai or get mentor credits. Then set `ZEROG_MODEL` to a live model: `0gm-1.0-35b-a3b` is gone, and `0gm-1.0-35b-a3b-sia` is text-only, so vision needs a different model (e.g. a `-vl` one) | https://pc.0g.ai | smoke:compute |
+| **World:** create the IdP client and paste `WORLD_IDP_CLIENT_ID` + `WORLD_IDP_CLIENT_SECRET` into `agents/.env`. Then smoke:world can be built and run (it needs you to approve on your phone) | see rows below | smoke:world |
 | Fund the deployer wallet. Faucet gives 0.1 0G/day per wallet; ask 0G mentors/Discord for more (≥ 1 0G is comfortable for chain + storage) | https://faucet.0g.ai · https://cloud.google.com/application/web3/faucet/0g/galileo · https://discord.gg/0glabs | step 2, 4 |
 | 0G Compute: sign in, deposit, create an `sk-` API key, paste it into `agent/.env` yourself. Mainnet `pc.0g.ai` or testnet `pc.testnet.0g.ai` depending on decision D3. Optionally also an `mk-` key (Settings → Management Keys) for balance checks | https://pc.0g.ai (Dashboard → Deposit / API Keys) | step 3 |
 | Ask 0G mentors: is the testnet Router alive, and can we get testnet credits? Free-credits link from pc.0g.ai: https://iai.finance/#/get | venue / Discord | step 3 |
