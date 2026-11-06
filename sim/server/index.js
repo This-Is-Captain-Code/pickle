@@ -28,9 +28,9 @@ const BOX_SPOT = (process.env.SIM_BOX ?? '0.34,0,0.875').split(',').map(Number);
 // The pose the bridge commands at the user's calibration rest: the robot
 // idles hands-over-table instead of slumping at ctrl=0.
 const REST_POSE = {
-  left_shoulder_pitch: -0.625, right_shoulder_pitch: -0.625,
-  left_shoulder_roll: 0.333, right_shoulder_roll: -0.333,
-  left_elbow: 1.389, right_elbow: 1.389,
+  left_shoulder_pitch: -0.85, right_shoulder_pitch: -0.85,
+  left_shoulder_roll: 0.28, right_shoulder_roll: -0.28,
+  left_elbow: 1.3, right_elbow: 1.3,
 };
 
 const sim = await Sim.create();

@@ -74,6 +74,15 @@ function makeHand(side) {
 const hands = { left: makeHand('left'), right: makeHand('right') };
 let head = null; // latest {pos, rot} from the sender (newer senders only)
 let holding = false, lastPinchActionAt = 0;
+let parked = false;
+// "Ready" park pose: hands hovering over the table (matches the sim's
+// REST_POSE); sent once when tracking is lost so the robot never freezes
+// mid-motion in whatever pose the last stale frame left it.
+const PARK_POSE = {
+  left_shoulder_pitch: -0.85, right_shoulder_pitch: -0.85,
+  left_shoulder_roll: 0.28, right_shoulder_roll: -0.28,
+  left_elbow: 1.3, right_elbow: 1.3, waist_pitch: 0,
+};
 
 function updateHand(h, data, t) {
   const wrist = data?.joints?.[0]?.pos;
@@ -82,6 +91,8 @@ function updateHand(h, data, t) {
     return;
   }
   h.lastSeen = t;
+  h.seenWall = Date.now();
+  parked = false;
   if (!h.origin) {
     h.calib.push(wrist);
     if (h.calib.length >= CALIB_FRAMES) {
@@ -222,7 +233,22 @@ setInterval(() => {
   if (!actuatorIndex || robotMode !== 'teleop' || simWs?.readyState !== WebSocket.OPEN) return;
   const targets = new Array(nu).fill(null);
   let maxReach = null, maxLean = null;
+  const now = Date.now();
+  const anyFresh = [hands.left, hands.right].some((h) => h.seenWall && now - h.seenWall < 400);
+  if (!anyFresh) {
+    // Tracking lost: park once in the ready pose instead of holding stale motion.
+    const lastSeen = Math.max(hands.left.seenWall ?? 0, hands.right.seenWall ?? 0);
+    if (!parked && lastSeen && now - lastSeen > 2500) {
+      const t = new Array(nu).fill(null);
+      for (const [name, v] of Object.entries(PARK_POSE)) { const i = actuatorIndex.get(name); if (i != null) t[i] = v; }
+      simWs.send(JSON.stringify({ t: 'ctrl', targets: t }));
+      parked = true;
+      log('bridge', 'hands lost — parked in ready pose');
+    }
+    return;
+  }
   for (const h of [hands.left, hands.right]) {
+    if (!h.seenWall || now - h.seenWall > 400) continue; // stale hand: don't steer with old data
     const t = USE_IK && head ? armTargetsIK(h) : armTargets(h);
     if (!t) continue;
     if (t._lean != null) maxLean = Math.max(maxLean ?? 0, t._lean);

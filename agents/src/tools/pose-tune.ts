@@ -20,19 +20,25 @@ const send = (vals: Record<string, number>) => {
 
 ws.on('open', async () => {
   while (!idx) await sleep(100);
-  // The exact pose the bridge commands when the user's hands rest at their
-  // calibration origin (all offsets zero).
-  send({
-    waist_pitch: 0,
-    left_shoulder_pitch: -0.625, right_shoulder_pitch: -0.625,
-    left_shoulder_roll: 0.333, right_shoulder_roll: -0.333,
-    left_elbow: 1.389, right_elbow: 1.389,
-  });
-  await sleep(2000);
-  const s = await state();
-  const l = s.robot.wrists.l as number[];
-  const r = s.robot.wrists.r as number[];
-  console.log(`rest pose wrists: L [${l.join(', ')}]  R [${r.join(', ')}]`);
-  console.log(`midpoint: [${((l[0] + r[0]) / 2).toFixed(3)}, ${((l[1] + r[1]) / 2).toFixed(3)}, ${((l[2] + r[2]) / 2).toFixed(3)}]`);
+  // Candidate "ready" rest poses: hands hovering over the table near the box
+  // (box at 0.34, 0, 0.87; table top 0.81).
+  const combos: [number, number, number][] = [
+    [-0.75, 1.2, 0.28],
+    [-0.85, 1.3, 0.28],
+    [-0.7, 1.05, 0.25],
+  ];
+  for (const [sp, el, sr] of combos) {
+    send({
+      waist_pitch: 0,
+      left_shoulder_pitch: sp, right_shoulder_pitch: sp,
+      left_shoulder_roll: sr, right_shoulder_roll: -sr,
+      left_elbow: el, right_elbow: el,
+    });
+    await sleep(1800);
+    const s = await state();
+    const l = s.robot.wrists.l as number[];
+    const r = s.robot.wrists.r as number[];
+    console.log(`sp=${sp} el=${el} sr=${sr} -> wristL [${l.join(', ')}] wristR [${r.join(', ')}]`);
+  }
   process.exit(0);
 });
