@@ -1,36 +1,31 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-
-const RELAY = 'wss://pickle-hand-relay.pickle-delhi.workers.dev/claims';
+import { useState } from 'react';
 
 const PANELS = [
   {
     num: '01',
     name: 'PHYSICAL',
-    buys: 'buying hands',
     accent: 'var(--red)',
-    def: 'Some failures cannot be solved remotely, by definition: the robot is powerless, immobilized, or the fix lies outside its own actuation. A human must be present.',
-    demo: 'DEMO · a dying Watcher posts its own rescue — scan the QR on its face, plug it in. Power returning is the proof. Claim → verified in 5 seconds, on real hardware.',
-    economy: 'Creates a micro-labor economy: people monetize proximity and hands; robots buy uptime.',
+    img: '/panels/physical.jpg',
+    line: 'A human must be present. The robot buys hands.',
+    demo: { label: 'DEMO →', href: 'https://pickle-hand-relay.pickle-delhi.workers.dev/go' },
   },
   {
     num: '02',
     name: 'REMOTE',
-    buys: 'buying skill',
     accent: 'var(--cyan)',
-    def: 'The body is capable but the skill or judgment isn’t. Nobody needs to be on-site — a verified human pilots the robot through the gap. Every session doubles as training data.',
-    demo: 'DEMO · a Unitree G1 blocked by a fallen rail. A human claims the bounty and clears it through Snap Spectacles hand-tracking — their hands become its arms, pinch to grip.',
-    economy: 'Creates a skill-and-data economy: dexterity sold by the minute, demonstrations that compound into autonomy.',
+    img: '/panels/remote.jpg',
+    line: 'A human pilots it through the gap. The robot buys skill.',
+    demo: { label: 'DEMO →', href: 'https://pickle-hand-relay.pickle-delhi.workers.dev/' },
   },
   {
     num: '03',
     name: 'MACHINE',
-    buys: 'buying services',
     accent: 'var(--yellow)',
-    def: 'When the help a robot needs is something another machine already has — a charging slot, a tool, queue priority — no human belongs in the loop. The robots transact directly.',
-    demo: 'DEMO · charging-slot negotiation, agent to agent: one use case of a general machine-to-machine service market.',
-    economy: 'Creates a machine-to-machine economy: the market clears even when no human is around.',
+    img: '/panels/machine.jpg',
+    line: 'Robots transact directly, peer to peer. No human in the loop.',
+    demo: { label: 'DEMO AT THE BOOTH', href: null },
   },
 ];
 
@@ -41,132 +36,66 @@ const PIPELINE = [
   { chip: 'VERIFIED', accent: 'var(--green)', text: 'Proof is physical: VBUS edges, joint telemetry, resume checks. Verification comes from the robot’s own sensors, not from trust.' },
 ];
 
-function useLiveStats() {
-  const [connected, setConnected] = useState(false);
-  const [verified, setVerified] = useState(7); // interventions verified during build & live tests
-  const seen = useRef(new Set<string>());
-
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let alive = true;
-    const connect = () => {
-      try {
-        ws = new WebSocket(RELAY);
-        ws.onopen = () => alive && setConnected(true);
-        ws.onclose = () => {
-          if (!alive) return;
-          setConnected(false);
-          setTimeout(connect, 4000);
-        };
-        ws.onmessage = (ev) => {
-          try {
-            const m = JSON.parse(ev.data);
-            if (m.type === 'claim_ack' && m.status === 'verified' && !seen.current.has(m.claimId)) {
-              seen.current.add(m.claimId);
-              setVerified((v) => v + 1);
-            }
-          } catch {}
-        };
-      } catch {}
-    };
-    connect();
-    return () => {
-      alive = false;
-      ws?.close();
-    };
-  }, []);
-
-  return { connected, verified };
-}
-
 export default function Home() {
-  const { connected, verified } = useLiveStats();
   const [open, setOpen] = useState(0);
 
   return (
     <main className="grid-bg">
       {/* ── HERO ─────────────────────────────────────────────────────── */}
-      <section className="snap-section items-center text-center">
-        <p className="font-mono text-xs tracking-[0.35em] text-[var(--fg-dim)]">
-          A LABOR MARKET FOR ROBOTS
-        </p>
-        <h1 className="font-display mt-5 text-7xl font-bold tracking-tight text-[var(--green)] sm:text-8xl md:text-9xl">
+      <section className="snap-section relative items-center text-center">
+        <h1 className="font-display text-7xl font-bold tracking-tight text-[var(--green)] sm:text-8xl md:text-9xl">
           PICKLE
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-balance text-lg text-[var(--fg)] sm:text-xl">
-          When a robot hits its limits, it needs someone’s{' '}
-          <span className="text-[var(--red)]">hands</span>, someone’s{' '}
-          <span className="text-[var(--cyan)]">skill</span>, or another machine’s{' '}
-          <span className="text-[var(--yellow)]">services</span>.
-          <br className="hidden sm:block" /> Pickle is the market where it buys all three.
+          A labor market where robots hire humans — and each other.
         </p>
-
-        <div className="mt-12 grid w-full max-w-3xl grid-cols-2 gap-3 md:grid-cols-4">
-          {[
-            ['ROBOTS IN FLEET', '2'],
-            ['CLAIM → VERIFIED', '5s'],
-            ['INTERVENTIONS VERIFIED', String(verified)],
-            ['INTERVENTION CLASSES', '3'],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-[var(--line)] bg-[var(--bg-raise)] px-4 py-5">
-              <div className="font-display text-4xl text-[var(--green)] tabular-nums">{value}</div>
-              <div className="font-mono mt-2 text-[10px] tracking-[0.18em] text-[var(--fg-dim)]">{label}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="font-mono mt-8 flex items-center gap-2 text-xs text-[var(--fg-dim)]">
-          {connected ? (
-            <>
-              <span className="live-dot" /> LIVE — listening to the bounty relay
-            </>
-          ) : (
-            <>figures from live hardware runs · relay offline</>
-          )}
-        </div>
-
-        <div className="font-mono mt-14 animate-bounce text-sm text-[var(--fg-dim)]">▼ scroll</div>
+        <p className="font-mono mt-10 text-xs tracking-[0.3em] text-[var(--fg-dim)]">
+          POWERED BY WORLD × 0G
+        </p>
+        <div className="font-mono absolute bottom-8 animate-bounce text-sm text-[var(--fg-dim)]">▼</div>
       </section>
 
-      {/* ── THE THREE INTERVENTIONS ──────────────────────────────────── */}
-      <section className="snap-section">
-        <div className="mx-auto w-full max-w-6xl">
-          <p className="font-mono text-xs tracking-[0.35em] text-[var(--fg-dim)]">THE THREE INTERVENTIONS</p>
-          <h2 className="font-display mt-3 text-3xl font-bold sm:text-4xl">
-            Every robot failure is one of three markets.
-          </h2>
-          <div className="panels mt-8">
-            {PANELS.map((p, i) => (
-              <div
-                key={p.num}
-                className={`panel ${open === i ? 'open' : ''}`}
-                style={{ ['--pa' as string]: p.accent }}
-                onMouseEnter={() => setOpen(i)}
-                onClick={() => setOpen(i)}
-                onFocus={() => setOpen(i)}
-                tabIndex={0}
-                role="button"
-                aria-expanded={open === i}
-              >
-                <div className="bar" />
-                <div className="num font-display absolute left-5 top-5 text-xl font-bold">{p.num}</div>
-                <div className="closed-label font-display text-lg font-medium text-[var(--fg-dim)]">{p.name}</div>
-                <div className="body justify-center">
-                  <div>
-                    <span className="font-display text-3xl font-bold" style={{ color: p.accent }}>
-                      {p.name}
-                    </span>
-                    <span className="font-mono ml-3 text-sm text-[var(--fg-dim)]">intervention · {p.buys}</span>
-                  </div>
-                  <p className="max-w-xl text-[15px] leading-relaxed text-[var(--fg)]">{p.def}</p>
-                  <p className="font-mono max-w-xl rounded-md border border-[var(--line)] bg-[var(--bg)] p-4 text-[13px] leading-relaxed text-[var(--fg-dim)]">
-                    {p.demo}
-                  </p>
-                  <p className="max-w-xl text-[14px] text-[var(--fg-dim)]">{p.economy}</p>
+      {/* ── THE THREE INTERVENTIONS: full-screen triptych ────────────── */}
+      <section className="trip-section">
+        <p className="font-mono pointer-events-none absolute left-1/2 top-6 z-10 -translate-x-1/2 text-xs tracking-[0.35em] text-[var(--fg)] [text-shadow:0_1px_8px_rgba(0,0,0,0.8)]">
+          THE THREE INTERVENTIONS
+        </p>
+        <div className="trip">
+          {PANELS.map((p, i) => (
+            <div
+              key={p.num}
+              className={`tpanel ${open === i ? 'open' : ''}`}
+              style={{ ['--pa' as string]: p.accent }}
+              onMouseEnter={() => setOpen(i)}
+              onClick={() => setOpen(i)}
+              onFocus={() => setOpen(i)}
+              tabIndex={0}
+              role="button"
+              aria-expanded={open === i}
+            >
+              <img src={p.img} alt={`${p.name} intervention`} />
+              <div className="label">
+                <div className="flex items-baseline gap-3">
+                  <span className="font-display text-lg font-bold" style={{ color: p.accent }}>
+                    {p.num}
+                  </span>
+                  <span className="font-display text-3xl font-bold tracking-wide text-[var(--fg)] sm:text-4xl">
+                    {p.name}
+                  </span>
+                </div>
+                <div className="reveal">
+                  <p className="text-[15px] leading-relaxed text-[var(--fg)] sm:text-lg">{p.line}</p>
+                  {p.demo.href ? (
+                    <a className="demo-btn" href={p.demo.href} onClick={(e) => e.stopPropagation()}>
+                      {p.demo.label}
+                    </a>
+                  ) : (
+                    <span className="demo-btn opacity-60">{p.demo.label}</span>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </section>
 
