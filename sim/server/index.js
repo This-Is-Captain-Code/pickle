@@ -17,6 +17,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = +(process.env.SIM_PORT || 8787);
 const TOKEN = process.env.SIM_TELEOP_TOKEN || 'dev-token';
 const WEBHOOK = process.env.AGENTS_WEBHOOK_URL || ''; // e.g. http://localhost:8090/events/sim
+// Demo default: stage the knock-box scenario shortly after boot, so starting
+// the sim lands on the teleop bounty. SIM_SCENARIO=none|obstacle|person|knock.
+const AUTO_SCENARIO = (process.env.SIM_SCENARIO ?? 'knock').toLowerCase();
 
 const sim = await Sim.create();
 const app = express();
@@ -129,4 +132,8 @@ setInterval(() => broadcast({ t: 'state', time: +sim.data.time.toFixed(3), poses
 
 process.on('uncaughtException', (e) => console.error('[sim] uncaught exception (kept running):', e?.stack || e));
 process.on('unhandledRejection', (e) => console.error('[sim] unhandled rejection (kept running):', e?.stack || e));
-server.listen(PORT, () => console.log(`pickle sim on http://localhost:${PORT}  (teleop token ${TOKEN === 'dev-token' ? 'dev-token (default)' : 'set'}; webhook ${WEBHOOK || 'off'})`));
+server.listen(PORT, () => {
+  console.log(`pickle sim on http://localhost:${PORT}  (teleop token ${TOKEN === 'dev-token' ? 'dev-token (default)' : 'set'}; webhook ${WEBHOOK || 'off'}; scenario ${AUTO_SCENARIO})`);
+  const auto = { obstacle: () => sim.spawnObstacle(), person: () => sim.personEnter(), knock: () => sim.knockTarget() }[AUTO_SCENARIO];
+  if (auto) setTimeout(() => { auto(); console.log(`[demo] auto-staged scenario: ${AUTO_SCENARIO}`); }, 6000);
+});

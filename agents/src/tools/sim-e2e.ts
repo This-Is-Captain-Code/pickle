@@ -24,8 +24,12 @@ async function waitFor(what: string, pred: () => Promise<boolean>, timeoutS = 30
   throw new Error(`timed out waiting for ${what}`);
 }
 
+// NOTE: run the sim with SIM_SCENARIO=none for this test — the boot default
+// auto-stages the knock-box demo, which would occupy the device's bounty slot.
 async function main() {
   log('e2e', '1. dropping the rail on the robot');
+  await post('/api/scenario/reset');
+  await sleep(1000);
   await post('/api/scenario/obstacle');
   // The sim defers the rail drop until the arms are clear of the feeder, so
   // stuck can take most of a routine cycle to land.
