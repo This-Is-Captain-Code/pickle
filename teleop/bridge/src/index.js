@@ -201,9 +201,11 @@ function armTargets(h) {
   const restRoll = h.side === 'left' ? 0.28 : -0.28;
   const p = `${h.side}_`;
   const out = {};
-  out[p + 'shoulder_pitch'] = clamp(-0.85 - dUp * GAIN.pitch, -2.3, 0.4);
+  // Pitch floor -0.4: the arm can never swing below the tabletop, so it can
+  // never get trapped under the table edge on the way back up.
+  out[p + 'shoulder_pitch'] = clamp(-0.85 - dUp * GAIN.pitch, -2.3, -0.4);
   out[p + 'shoulder_roll'] = clamp(restRoll + dLeft * GAIN.roll, -1.9, 1.9);
-  out[p + 'elbow'] = clamp(1.3 - dFwd * GAIN.elbow, 0.05, 2.0);
+  out[p + 'elbow'] = clamp(1.3 - dFwd * GAIN.elbow, 0.05, 1.9);
   return out;
 }
 

@@ -24,7 +24,7 @@ const SIM_MODE = (process.env.SIM_MODE ?? 'teleop').toLowerCase();
 const AUTO_SCENARIO = (process.env.SIM_SCENARIO ?? 'none').toLowerCase();
 // Where the box is staged for teleop sessions: centered, one small reach in
 // front of the hands' rest midpoint (0.27, 0, 0.87); drop zone on the right.
-const BOX_SPOT = (process.env.SIM_BOX ?? '0.34,0,0.875').split(',').map(Number);
+const BOX_SPOT = (process.env.SIM_BOX ?? '0.40,0,0.875').split(',').map(Number);
 // The pose the bridge commands at the user's calibration rest: the robot
 // idles hands-over-table instead of slumping at ctrl=0.
 const REST_POSE = {
