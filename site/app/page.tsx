@@ -10,7 +10,7 @@ const PANELS = [
     accent: 'var(--red)',
     img: '/panels/physical.jpg',
     line: 'A human must be present. The robot buys hands.',
-    demo: { label: 'DEMO →', href: 'https://pickle-hand-relay.pickle-delhi.workers.dev/go' },
+    demo: { label: 'DEMO →', href: '/portal' },
   },
   {
     num: '02',
@@ -19,7 +19,7 @@ const PANELS = [
     accent: 'var(--cyan)',
     img: '/panels/remote.jpg',
     line: 'A human pilots it through the gap. The robot buys skill.',
-    demo: { label: 'DEMO →', href: 'https://pickle-hand-relay.pickle-delhi.workers.dev/' },
+    demo: { label: 'DEMO →', href: '/portal' },
   },
   {
     num: '03',
@@ -28,7 +28,7 @@ const PANELS = [
     accent: 'var(--yellow)',
     img: '/panels/machine.jpg',
     line: 'Robots transact directly, peer to peer. No human in the loop.',
-    demo: { label: 'DEMO AT THE BOOTH', href: null },
+    demo: { label: 'DEMO →', href: '/portal' },
   },
 ];
 
